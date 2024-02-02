@@ -1,0 +1,10 @@
+[package]
+name = "buffdb"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rusqlite = "0.30.0":wq
+
