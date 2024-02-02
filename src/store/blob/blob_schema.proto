@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package blobstore;
+
+// Message for storing a BLOB.
+message Blob {
+  int64 id = 1; // Unique identifier for the BLOB.
+  bytes data = 2; // The binary data of the BLOB.
+  string metadata = 3; // Optional metadata as a JSON string or similar.
+}
+
+// Service definition for BLOB operations.
+service BlobService {
+  // Stores a new BLOB.
+  rpc StoreBlob(Blob) returns (StoreBlobResponse);
+
+  // Retrieves a BLOB by its ID.
+  rpc GetBlob(GetBlobRequest) returns (Blob);
+}
+
+// Request message for storing a BLOB.
+// This could be the same as the Blob message or include additional fields as needed.
+
+message StoreBlobResponse {
+  int64 id = 1; // The ID of the stored BLOB, confirming the operation.
+}
+
+// Request message for retrieving a BLOB.
+message GetBlobRequest {
+  int64 id = 1; // The ID of the BLOB to retrieve.
+}

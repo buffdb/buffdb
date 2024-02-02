@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package kvstore;
+
+// The request message containing the key.
+message GetRequest {
+  string key = 1;
+}
+
+// The response message containing the value.
+message GetResponse {
+  string value = 1;
+}
+
+// The service definition.
+service KeyValue {
+  // Sends a request to get a value for a given key
+  rpc Get(GetRequest) returns (GetResponse);
+}

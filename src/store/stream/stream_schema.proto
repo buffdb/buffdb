@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package streamstore;
+
+// Define a simple message that will be streamed.
+message StreamMessage {
+  int32 id = 1; // Unique identifier for the message
+  string content = 2; // The content of the message
+}
+
+// Define the request message. It can be as simple as an empty message
+// if no specific request data is needed for initiating the stream.
+message StreamRequest {
+  // You can add fields here if you want to request specific streams
+  // For example, filtering based on some criteria
+}
+
+// The service definition
+service StreamService {
+  // Define a server streaming RPC
+  rpc StreamData(StreamRequest) returns (stream StreamMessage);
+}
