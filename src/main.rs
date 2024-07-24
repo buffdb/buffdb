@@ -1,4 +1,9 @@
-use rusqlite::{Connection, Result as SqliteResult, Error as SqliteError};
+use rusqlite::{Connection, Error as SqliteError, Result as SqliteResult};
+
+mod store {
+    mod blob;
+    mod stream;
+}
 
 fn main() -> SqliteResult<()> {
     // Connect to or create a new database
