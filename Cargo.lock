@@ -171,6 +171,7 @@ dependencies = [
  "prost-build",
  "rusqlite",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tonic-build",
 ]

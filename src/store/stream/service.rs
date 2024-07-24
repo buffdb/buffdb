@@ -1,5 +1,5 @@
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{transport::Server, Request, Response, Status};
-use tonic::{Request, Response, Status};
 
 pub mod streamstore {
     tonic::include_proto!("streamstore");
@@ -13,7 +13,7 @@ pub struct StreamStore {}
 
 #[tonic::async_trait]
 impl StreamService for StreamStore {
-    type StreamDataStream = tokio::sync::mpsc::Receiver<Result<StreamMessage, Status>>;
+    type StreamDataStream = ReceiverStream<Result<StreamMessage, Status>>;
 
     async fn stream_data(
         &self,
@@ -33,7 +33,7 @@ impl StreamService for StreamStore {
             }
         });
 
-        Ok(Response::new(rx))
+        Ok(Response::new(rx.into()))
     }
 }
 
