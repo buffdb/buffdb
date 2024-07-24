@@ -6,7 +6,15 @@ use self::kv_store::{
     DeleteRequest, DeleteResponse, GetRequest, GetResponse, SetRequest, SetResponse,
 };
 use crate::store::kv::service::kv_store::key_value_server::KeyValue;
+use once_cell::sync::Lazy;
 use tonic::{Request, Response, Status};
+
+thread_local! {
+    static KV_STORE_DB: Lazy<rusqlite::Connection> = Lazy::new(|| {
+        // TODO back by something on the file system, not memory
+        rusqlite::Connection::open_in_memory().unwrap()
+    });
+}
 
 #[derive(Default)]
 pub struct KvStore {}
