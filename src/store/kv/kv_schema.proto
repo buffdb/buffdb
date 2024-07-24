@@ -2,6 +2,18 @@ syntax = "proto3";
 
 package kvstore;
 
+// The service definition.
+service KeyValue {
+  // Sends a request to get a value for a given key
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Sends a request to set a value for a given key
+  rpc Set(SetRequest) returns (SetResponse);
+
+  // Sends a request to delete a value for a given key
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+}
+
 // The request message containing the key.
 message GetRequest {
   string key = 1;
@@ -12,8 +24,23 @@ message GetResponse {
   string value = 1;
 }
 
-// The service definition.
-service KeyValue {
-  // Sends a request to get a value for a given key
-  rpc Get(GetRequest) returns (GetResponse);
+// The request message containing the key and value.
+message SetRequest {
+  string key = 1;
+  string value = 2;
+}
+
+// The response message containing the old value, if any.
+message SetResponse {
+  optional string old_value = 1;
+}
+
+// The request message containing the key.
+message DeleteRequest {
+  string key = 1;
+}
+
+// The response message containing the deleted value, if any.
+message DeleteResponse {
+  optional string value = 1;
 }
