@@ -16,11 +16,13 @@ service BlobService {
 
   // Retrieves a BLOB by its ID.
   rpc GetBlob(GetBlobRequest) returns (Blob);
+
+  // Deletes a BLOB by its ID.
+  rpc DeleteBlob(DeleteBlobRequest) returns (Blob);
 }
 
 // Request message for storing a BLOB.
 // This could be the same as the Blob message or include additional fields as needed.
-
 message StoreBlobResponse {
   int64 id = 1; // The ID of the stored BLOB, confirming the operation.
 }
@@ -28,4 +30,9 @@ message StoreBlobResponse {
 // Request message for retrieving a BLOB.
 message GetBlobRequest {
   int64 id = 1; // The ID of the BLOB to retrieve.
+}
+
+// Request message for deleting a BLOB.
+message DeleteBlobRequest {
+  int64 id = 1; // The ID of the BLOB to delete.
 }
