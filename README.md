@@ -22,3 +22,41 @@ located at `target/release/buffdb`. It is statically linked, so it can be moved 
 file system without issue.
 
 Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as well!
+
+## Example usage in Rust
+
+Run `cargo add buffdb tonic tokio` to add the necessary dependencies. Then you can execute the
+following code:
+
+```rust
+use buffdb::kv::{Key, KeyValue, KeyValueRpc, KvStore};
+use tonic::Request;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let store = KvStore::new_in_memory();
+
+    store
+        .set(Request::new(KeyValue {
+            key: "key".to_owned(),
+            value: "value".to_owned(),
+        }))
+        .await?;
+
+    let response = store
+        .delete(Request::new(Key {
+            key: "key".to_owned(),
+        }))
+        .await?;
+    assert_eq!(response.get_ref().value, "value");
+
+    let response = store
+        .get(Request::new(Key {
+            key: "key".to_owned(),
+        }))
+        .await;
+    assert!(response.is_err());
+
+    Ok(())
+}
+```
