@@ -3,7 +3,7 @@ mod kv_store {
 }
 
 use crate::store;
-pub use crate::store::kv::kv_store::key_value_server::KeyValue;
+pub use crate::store::kv::kv_store::key_value_server::{KeyValue, KeyValueServer};
 pub use crate::store::kv::kv_store::{
     DeleteRequest, DeleteResponse, GetRequest, GetResponse, SetRequest, SetResponse,
 };
@@ -19,9 +19,12 @@ pub struct KvStore {
 
 impl KvStore {
     #[inline]
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new<P>(path: P) -> Self
+    where
+        P: Into<PathBuf>,
+    {
         Self {
-            location: store::Location::OnDisk { path },
+            location: store::Location::OnDisk { path: path.into() },
         }
     }
 

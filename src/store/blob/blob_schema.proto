@@ -3,7 +3,7 @@ syntax = "proto3";
 package blobstore;
 
 // Service definition for BLOB operations.
-service BlobService {
+service Blob {
   // Retrieves a BLOB by its ID.
   rpc Get(BlobId) returns (BlobData);
 

@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::{store, RpcResponse};
 
-pub use self::blob_store::blob_service_server::BlobService;
+pub use self::blob_store::blob_server::{Blob, BlobServer};
 pub use self::blob_store::{BlobData, BlobId, UpdateRequest};
 use tonic::{Request, Response, Status};
 
@@ -17,9 +17,12 @@ pub struct BlobStore {
 
 impl BlobStore {
     #[inline]
-    pub fn new(path: PathBuf) -> Self {
+    pub fn new<P>(path: P) -> Self
+    where
+        P: Into<PathBuf>,
+    {
         let store = Self {
-            location: store::Location::OnDisk { path },
+            location: store::Location::OnDisk { path: path.into() },
         };
         store.initialize_table();
         store
@@ -65,7 +68,7 @@ impl BlobStore {
 }
 
 #[tonic::async_trait]
-impl BlobService for BlobStore {
+impl Blob for BlobStore {
     async fn get(&self, request: Request<BlobId>) -> RpcResponse<BlobData> {
         self.with_db(|db| {
             let value = db.query_row(
