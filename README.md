@@ -20,3 +20,5 @@ the blob data in `blob_store.sqlite3`. All three can be configured with command 
 To build with optimizations enabled, run `cargo build --release`. The resulting binary will be
 located at `target/release/buffdb`. It is statically linked, so it can be moved anywhere on your
 file system without issue.
+
+Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as well!
