@@ -32,7 +32,7 @@ message SetRequest {
 
 // The response message containing the old value, if any.
 message SetResponse {
-  optional string old_value = 1;
+  // optional string old_value = 1; // TODO Is there a way to do this in a single query?
 }
 
 // The request message containing the key.
@@ -40,7 +40,7 @@ message DeleteRequest {
   string key = 1;
 }
 
-// The response message containing the deleted value, if any.
+// The response message containing the deleted value.
 message DeleteResponse {
-  optional string value = 1;
+  string old_value = 1;
 }
