@@ -4,7 +4,6 @@ use std::path::PathBuf;
 
 pub mod blob;
 pub mod kv;
-pub mod stream;
 
 thread_local! {
     /// Map of a database's path to a connection to that database.
