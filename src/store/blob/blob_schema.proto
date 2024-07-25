@@ -2,37 +2,36 @@ syntax = "proto3";
 
 package blobstore;
 
-// Message for storing a BLOB.
-message Blob {
-  int64 id = 1; // Unique identifier for the BLOB.
-  bytes data = 2; // The binary data of the BLOB.
-  string metadata = 3; // Optional metadata as a JSON string or similar.
-}
-
 // Service definition for BLOB operations.
 service BlobService {
-  // Stores a new BLOB.
-  rpc StoreBlob(Blob) returns (StoreBlobResponse);
-
   // Retrieves a BLOB by its ID.
-  rpc GetBlob(GetBlobRequest) returns (Blob);
+  rpc Get(BlobId) returns (BlobData);
+
+  // Stores a new BLOB.
+  rpc Store(BlobData) returns (BlobId);
+
+  // Updates an existing BLOB.
+  rpc Update(UpdateRequest) returns (BlobId);
 
   // Deletes a BLOB by its ID.
-  rpc DeleteBlob(DeleteBlobRequest) returns (Blob);
+  rpc Delete(BlobId) returns (BlobData);
 }
 
-// Request message for storing a BLOB.
-// This could be the same as the Blob message or include additional fields as needed.
-message StoreBlobResponse {
-  int64 id = 1; // The ID of the stored BLOB, confirming the operation.
+// A unique identifier for a BLOB.
+message BlobId {
+  uint64 id = 1; // The ID of a BLOB.
 }
 
-// Request message for retrieving a BLOB.
-message GetBlobRequest {
-  int64 id = 1; // The ID of the BLOB to retrieve.
+// A BLOB and its optional metadata.
+message BlobData {
+  bytes bytes = 1; // The binary data of the BLOB.
+  optional string metadata = 2; // Optional metadata as a JSON string or similar.
 }
 
-// Request message for deleting a BLOB.
-message DeleteBlobRequest {
-  int64 id = 1; // The ID of the BLOB to delete.
+// Update message for updating a BLOB.
+message UpdateRequest {
+  uint64 id = 1; // The ID of the BLOB to update.
+  optional bytes bytes = 2; // The updated binary data of the BLOB.
+  bool should_update_metadata = 3; // Whether to update the metadata.
+  optional string metadata = 4; // The updated metadata of the BLOB. Ignored if should_update_metadata is false.
 }
