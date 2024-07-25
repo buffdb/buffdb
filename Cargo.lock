@@ -217,7 +217,6 @@ name = "buffdb"
 version = "0.1.1"
 dependencies = [
  "clap",
- "once_cell",
  "prost",
  "rusqlite",
  "tokio",
