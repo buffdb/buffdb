@@ -1,8 +1,14 @@
 [package]
 name = "buffdb"
-authors = ["Marcus Eagan"]
+authors = ["Marcus Eagan", "Jacob Pratt"]
 version = "0.1.0"
 edition = "2021"
+description = "Embedded storage at the speed of light."
+repository = "https://github.com/buffdb/buffdb"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+keywords = ["database", "storage", "embedded", "key-value", "blob"]
+categories = ["database-implementations", "embedded"]
 
 [dependencies]
 clap = { version = "4.5.10", features = ["derive"] }
