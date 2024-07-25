@@ -3,44 +3,29 @@ syntax = "proto3";
 package kvstore;
 
 // The service definition.
-service KeyValue {
+service Kv {
   // Sends a request to get a value for a given key
-  rpc Get(GetRequest) returns (GetResponse);
+  rpc Get(Key) returns (Value);
 
   // Sends a request to set a value for a given key
-  rpc Set(SetRequest) returns (SetResponse);
+  rpc Set(KeyValue) returns (Key);
 
   // Sends a request to delete a value for a given key
-  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Delete(Key) returns (Value);
 }
 
-// The request message containing the key.
-message GetRequest {
+// The key half of a key-value pair.
+message Key {
   string key = 1;
 }
 
-// The response message containing the value.
-message GetResponse {
+// The value half of a key-value pair.
+message Value {
   string value = 1;
 }
 
-// The request message containing the key and value.
-message SetRequest {
+// A key-value pair.
+message KeyValue {
   string key = 1;
   string value = 2;
-}
-
-// The response message containing the old value, if any.
-message SetResponse {
-  // optional string old_value = 1; // TODO Is there a way to do this in a single query?
-}
-
-// The request message containing the key.
-message DeleteRequest {
-  string key = 1;
-}
-
-// The response message containing the deleted value.
-message DeleteResponse {
-  string old_value = 1;
 }

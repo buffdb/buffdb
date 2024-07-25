@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::{store, RpcResponse};
 
-pub use self::blob_store::blob_server::{Blob, BlobServer};
+pub use self::blob_store::blob_server::{Blob as BlobRpc, BlobServer};
 pub use self::blob_store::{BlobData, BlobId, UpdateRequest};
 use tonic::{Request, Response, Status};
 
@@ -68,7 +68,7 @@ impl BlobStore {
 }
 
 #[tonic::async_trait]
-impl Blob for BlobStore {
+impl BlobRpc for BlobStore {
     async fn get(&self, request: Request<BlobId>) -> RpcResponse<BlobData> {
         self.with_db(|db| {
             let value = db.query_row(

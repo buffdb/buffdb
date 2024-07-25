@@ -2,12 +2,9 @@ mod kv_store {
     tonic::include_proto!("kvstore");
 }
 
-use crate::store;
-pub use crate::store::kv::kv_store::key_value_server::{KeyValue, KeyValueServer};
-pub use crate::store::kv::kv_store::{
-    DeleteRequest, DeleteResponse, GetRequest, GetResponse, SetRequest, SetResponse,
-};
-use crate::RpcResponse;
+pub use crate::store::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
+pub use crate::store::kv::kv_store::{Key, KeyValue, Value};
+use crate::{store, RpcResponse};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
@@ -58,8 +55,8 @@ impl KvStore {
 }
 
 #[tonic::async_trait]
-impl KeyValue for KvStore {
-    async fn get(&self, request: Request<GetRequest>) -> RpcResponse<GetResponse> {
+impl KeyValueRpc for KvStore {
+    async fn get(&self, request: Request<Key>) -> RpcResponse<Value> {
         self.with_db(|db| {
             let value = db.query_row(
                 "SELECT value FROM kv_store WHERE key = ?1",
@@ -68,23 +65,24 @@ impl KeyValue for KvStore {
             );
 
             match value {
-                Ok(value) => Ok(Response::new(GetResponse { value })),
+                Ok(value) => Ok(Response::new(Value { value })),
                 // TODO Errors are possible even if the key is found. Handle them appropriately.
                 Err(_) => Err(Status::new(tonic::Code::NotFound, "key not found")),
             }
         })
     }
 
-    async fn set(&self, request: Request<SetRequest>) -> RpcResponse<SetResponse> {
+    async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {
         let request = request.get_ref();
         self.with_db(|db| {
-            let value = db.execute(
-                "REPLACE INTO kv_store (key, value) VALUES (?1, ?2)",
+            let key = db.query_row(
+                "REPLACE INTO kv_store (key, value) VALUES (?1, ?2) RETURNING key",
                 [&request.key, &request.value],
+                |row| row.get(0),
             );
 
-            match value {
-                Ok(_) => Ok(Response::new(SetResponse {})),
+            match key {
+                Ok(key) => Ok(Response::new(Key { key })),
                 Err(_) => Err(Status::new(
                     tonic::Code::Internal,
                     "failed to set key-value pair",
@@ -93,7 +91,7 @@ impl KeyValue for KvStore {
         })
     }
 
-    async fn delete(&self, request: Request<DeleteRequest>) -> RpcResponse<DeleteResponse> {
+    async fn delete(&self, request: Request<Key>) -> RpcResponse<Value> {
         self.with_db(|db| {
             let value = db.query_row(
                 "DELETE FROM kv_store WHERE key = ?1 RETURNING value",
@@ -102,7 +100,7 @@ impl KeyValue for KvStore {
             );
 
             match value {
-                Ok(old_value) => Ok(Response::new(DeleteResponse { old_value })),
+                Ok(value) => Ok(Response::new(Value { value })),
                 // TODO Errors are possible even if the key is found. Handle them appropriately.
                 Err(_) => Err(Status::new(tonic::Code::NotFound, "key not found")),
             }
@@ -119,14 +117,14 @@ mod test {
         let store = KvStore::new_in_memory();
 
         store
-            .set(Request::new(SetRequest {
+            .set(Request::new(KeyValue {
                 key: "key".to_owned(),
                 value: "value".to_owned(),
             }))
             .await?;
 
         let response = store
-            .get(Request::new(GetRequest {
+            .get(Request::new(Key {
                 key: "key".to_owned(),
             }))
             .await?;
@@ -140,12 +138,17 @@ mod test {
         let store = KvStore::new_in_memory();
 
         let response = store
-            .set(Request::new(SetRequest {
+            .set(Request::new(KeyValue {
                 key: "key".to_owned(),
                 value: "value".to_owned(),
             }))
             .await?;
-        assert_eq!(response.get_ref(), &SetResponse {});
+        assert_eq!(
+            response.get_ref(),
+            &Key {
+                key: "key".to_owned()
+            }
+        );
 
         Ok(())
     }
@@ -155,21 +158,21 @@ mod test {
         let store = KvStore::new_in_memory();
 
         store
-            .set(Request::new(SetRequest {
+            .set(Request::new(KeyValue {
                 key: "key".to_owned(),
                 value: "value".to_owned(),
             }))
             .await?;
 
         let response = store
-            .delete(Request::new(DeleteRequest {
+            .delete(Request::new(Key {
                 key: "key".to_owned(),
             }))
             .await?;
-        assert_eq!(response.get_ref().old_value, "value");
+        assert_eq!(response.get_ref().value, "value");
 
         let response = store
-            .get(Request::new(GetRequest {
+            .get(Request::new(Key {
                 key: "key".to_owned(),
             }))
             .await;
