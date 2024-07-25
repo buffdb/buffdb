@@ -2,16 +2,15 @@ mod kv_store {
     tonic::include_proto!("kvstore");
 }
 
-pub use crate::store::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
-pub use crate::store::kv::kv_store::{Key, KeyValue, Value};
-use crate::{store, RpcResponse};
-use std::collections::HashMap;
+pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
+pub use crate::kv::kv_store::{Key, KeyValue, Value};
+use crate::{Location, RpcResponse, DB};
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct KvStore {
-    location: store::Location,
+    location: Location,
 }
 
 impl KvStore {
@@ -20,35 +19,48 @@ impl KvStore {
     where
         P: Into<PathBuf>,
     {
-        Self {
-            location: store::Location::OnDisk { path: path.into() },
-        }
+        let store = Self {
+            location: Location::OnDisk { path: path.into() },
+        };
+        store.initialize_table().unwrap();
+        store
     }
 
     #[inline]
     pub fn new_in_memory() -> Self {
-        Self {
-            location: store::Location::InMemory,
-        }
+        let store = Self {
+            location: Location::InMemory,
+        };
+        store.initialize_table().unwrap();
+        store
     }
 
-    fn with_db<T, E>(
-        &self,
-        mut f: impl FnMut(&mut rusqlite::Connection) -> Result<T, E>,
-    ) -> Result<T, E> {
-        store::DB.with_borrow_mut(|map| {
+    fn initialize_table(&self) -> Result<(), rusqlite::Error> {
+        DB.with_borrow_mut(|map| {
             let db = map
                 .entry(self.location.clone())
                 .or_insert_with(|| self.location.to_connection());
 
             db.execute(
                 "CREATE TABLE IF NOT EXISTS kv_store (
-                    key TEXT PRIMARY KEY,
+                    key TEXT NOT NULL PRIMARY KEY,
                     value TEXT NOT NULL
                 )",
                 [],
-            );
+            )
+        })?;
 
+        Ok(())
+    }
+
+    fn with_db<T, E>(
+        &self,
+        mut f: impl FnMut(&mut rusqlite::Connection) -> Result<T, E>,
+    ) -> Result<T, E> {
+        DB.with_borrow_mut(|map| {
+            let db = map
+                .entry(self.location.clone())
+                .or_insert_with(|| self.location.to_connection());
             f(db)
         })
     }

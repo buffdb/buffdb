@@ -1,15 +1,12 @@
-#![allow(unused)] // TODO temporary
-
-pub mod store;
-
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+pub use buffdb::blob::*;
+pub use buffdb::kv::*;
+pub use buffdb::Location;
+pub use buffdb::RpcResponse;
 use clap::Parser;
-use rusqlite::{Connection, Error as SqliteError, Result as SqliteResult};
 use tonic::transport::Server;
-
-type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 
 #[derive(Debug, Parser)]
 #[command(version, about)]
@@ -32,12 +29,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         addr,
     } = Opts::parse();
 
-    let kv_store = store::kv::KvStore::new(kv_store);
-    let blob_store = store::blob::BlobStore::new(blob_store);
+    let kv_store = buffdb::kv::KvStore::new(kv_store);
+    let blob_store = buffdb::blob::BlobStore::new(blob_store);
 
     Server::builder()
-        .add_service(store::kv::KeyValueServer::new(kv_store))
-        .add_service(store::blob::BlobServer::new(blob_store))
+        .add_service(buffdb::kv::KeyValueServer::new(kv_store))
+        .add_service(buffdb::blob::BlobServer::new(blob_store))
         .serve(addr)
         .await?;
 

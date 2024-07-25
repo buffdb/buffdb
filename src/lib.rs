@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub mod blob;
 pub mod kv;
 
+pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
+
 thread_local! {
     /// Map of a database's path to a connection to that database.
     static DB: RefCell<HashMap<Location, rusqlite::Connection>> = RefCell::new(HashMap::new());

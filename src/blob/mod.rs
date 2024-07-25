@@ -4,15 +4,14 @@ mod blob_store {
 
 use std::path::PathBuf;
 
-use crate::{store, RpcResponse};
-
 pub use self::blob_store::blob_server::{Blob as BlobRpc, BlobServer};
 pub use self::blob_store::{BlobData, BlobId, UpdateRequest};
+use crate::{Location, RpcResponse, DB};
 use tonic::{Request, Response, Status};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BlobStore {
-    location: store::Location,
+    location: Location,
 }
 
 impl BlobStore {
@@ -22,23 +21,23 @@ impl BlobStore {
         P: Into<PathBuf>,
     {
         let store = Self {
-            location: store::Location::OnDisk { path: path.into() },
+            location: Location::OnDisk { path: path.into() },
         };
-        store.initialize_table();
+        store.initialize_table().unwrap();
         store
     }
 
     #[inline]
     pub fn new_in_memory() -> Self {
         let store = Self {
-            location: store::Location::InMemory,
+            location: Location::InMemory,
         };
-        store.initialize_table();
+        store.initialize_table().unwrap();
         store
     }
 
-    fn initialize_table(&self) {
-        store::DB.with_borrow_mut(|map| {
+    fn initialize_table(&self) -> Result<(), rusqlite::Error> {
+        DB.with_borrow_mut(|map| {
             let db = map
                 .entry(self.location.clone())
                 .or_insert_with(|| self.location.to_connection());
@@ -50,15 +49,17 @@ impl BlobStore {
                     metadata TEXT
                 )",
                 [],
-            );
-        });
+            )
+        })?;
+
+        Ok(())
     }
 
     fn with_db<T, E>(
         &self,
         mut f: impl FnMut(&mut rusqlite::Connection) -> Result<T, E>,
     ) -> Result<T, E> {
-        store::DB.with_borrow_mut(|map| {
+        DB.with_borrow_mut(|map| {
             let db = map
                 .entry(self.location.clone())
                 .or_insert_with(|| self.location.to_connection());
@@ -164,7 +165,7 @@ impl BlobRpc for BlobStore {
             match value {
                 Ok((bytes, metadata)) => Ok(Response::new(BlobData { bytes, metadata })),
                 // TODO Errors are possible even if the key is found. Handle them appropriately.
-                Err(err) => Err(Status::new(tonic::Code::NotFound, "key not found")),
+                Err(_) => Err(Status::new(tonic::Code::NotFound, "key not found")),
             }
         })
     }
