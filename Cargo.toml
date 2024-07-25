@@ -23,9 +23,7 @@ tokio = { version = "1", features = [
     "sync",
     "net",
 ] }
-tokio-stream = "0.1.15"
 tonic = "0.12.1"
 
 [build-dependencies]
 tonic-build = "0.12.1"
-prost-build = "0.13.1"
