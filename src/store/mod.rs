@@ -10,6 +10,7 @@ thread_local! {
     static DB: RefCell<HashMap<Location, rusqlite::Connection>> = RefCell::new(HashMap::new());
 }
 
+#[non_exhaustive] // future-proofing for options like network storage
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Location {
     InMemory,
