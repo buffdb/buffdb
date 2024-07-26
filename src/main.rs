@@ -1,3 +1,4 @@
+use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
@@ -21,6 +22,17 @@ struct Opts {
     addr: SocketAddr,
 }
 
+#[derive(Debug)]
+struct StoresCannotBeAtSameLocation;
+
+impl fmt::Display for StoresCannotBeAtSameLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "kv_store and blob_store cannot be at the same location")
+    }
+}
+
+impl std::error::Error for StoresCannotBeAtSameLocation {}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let Opts {
@@ -29,9 +41,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         addr,
     } = Opts::parse();
 
-    // TODO validate that kv_store and blob_store are not the same
-    // First the paths should be compared, and if *not* equal the inodes should also be compared
-    // (if pre-existing)
+    if kv_store == blob_store {
+        return Err(Box::new(&StoresCannotBeAtSameLocation) as _);
+    } else {
+        // Rust's standard library has extension traits for Unix and Windows. Windows doesn't have
+        // the concept of hard links, so there's no need to check an equivalent of inodes.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let kv_store_metadata = std::fs::metadata(&kv_store);
+            let blob_store_metadata = std::fs::metadata(&blob_store);
+
+            if let Some((kv_store_metadata, blob_store_metadata)) =
+                kv_store_metadata.ok().zip(blob_store_metadata.ok())
+            {
+                if kv_store_metadata.ino() == blob_store_metadata.ino() {
+                    return Err(Box::new(&StoresCannotBeAtSameLocation) as _);
+                }
+            }
+        }
+    }
 
     let kv_store = buffdb::kv::KvStore::new(kv_store);
     let blob_store = buffdb::blob::BlobStore::new(blob_store);

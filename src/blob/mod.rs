@@ -70,9 +70,8 @@ impl BlobRpc for BlobStore {
 
     async fn store(&self, request: Request<BlobData>) -> RpcResponse<BlobId> {
         let id = generate_id();
-        // TODO possible conflict between generated and pre-existing ID. Need to avoid TOCTOU error.
-        // TODO Look at key-value separation as described here:
-        // https://github.com/facebook/rocksdb/wiki/BlobDB
+        // TODO Potential (albeit rare) conflict between generated and pre-existing ID. When
+        // validating, it's be sure to avoid TOCTOU error. Transactions will be helpful here.
 
         let BlobData { bytes, metadata } = request.into_inner();
 
