@@ -69,20 +69,33 @@ impl BlobRpc for BlobStore {
     }
 
     async fn store(&self, request: Request<BlobData>) -> RpcResponse<BlobId> {
-        let id = generate_id();
-        // TODO Potential (albeit rare) conflict between generated and pre-existing ID. When
-        // validating, it's be sure to avoid TOCTOU error. Transactions will be helpful here.
-
+        let mut id = generate_id();
+        let mut id_bytes = id.to_ne_bytes();
         let BlobData { bytes, metadata } = request.into_inner();
 
         let data_col = self.db.cf_handle("data").unwrap();
         let metadata_col = self.db.cf_handle("metadata").unwrap();
 
+        if self.db.key_may_exist_cf(&data_col, id_bytes) {
+            id = generate_id();
+            id_bytes = id.to_ne_bytes();
+
+            // Theoretically it is possible for there to be *another* collision, but it incredibly
+            // unlikely to have back-to-back collisions. If it does happen, return an error instead
+            // of continuing to retry.
+            if self.db.key_may_exist_cf(&data_col, id_bytes) {
+                return Err(Status::new(
+                    tonic::Code::Internal,
+                    "failed to generate unique id",
+                ));
+            }
+        }
+
         // TODO Put these in a transaction to ensure all-or-nothing behavior. This is blocked on
         // rust-rocksdb/rust-rocksdb#868 being released.
-        let data_res = self.db.put_cf(&data_col, id.to_ne_bytes(), bytes);
+        let data_res = self.db.put_cf(&data_col, id_bytes, bytes);
         let metadata_res = if let Some(metadata) = metadata {
-            self.db.put_cf(&metadata_col, id.to_ne_bytes(), metadata)
+            self.db.put_cf(&metadata_col, id_bytes, metadata)
         } else {
             Ok(())
         };
