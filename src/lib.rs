@@ -1,7 +1,7 @@
 pub mod blob;
+mod db_connection;
 pub mod kv;
-mod location;
 
 pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 
-pub use self::location::Location;
+pub use crate::db_connection::Location;

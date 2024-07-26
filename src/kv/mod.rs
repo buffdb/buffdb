@@ -2,9 +2,9 @@ mod kv_store {
     tonic::include_proto!("kvstore");
 }
 
+use crate::db_connection::{Database, DbConnectionInfo};
 pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
 pub use crate::kv::kv_store::{Key, KeyValue, Value};
-use crate::location::{Connect, Database};
 use crate::{Location, RpcResponse};
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
@@ -14,13 +14,15 @@ pub struct KvStore {
     db: Database,
 }
 
-impl Connect for KvStore {
+impl DbConnectionInfo for KvStore {
     fn adjust_opts(opts: &mut rocksdb::Options) {
         opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
     }
 }
 
 impl KvStore {
+    /// Create a new key-value at the given path.
+    ///
     /// To store data in memory, use a path pointing to a tmpfs or ramfs.
     #[inline]
     pub fn new<P>(path: P) -> Self

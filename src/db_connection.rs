@@ -12,7 +12,12 @@ pub enum Location {
 }
 
 impl Location {
-    pub(crate) fn to_connection<T: Connect + ?Sized>(&self) -> Database {
+    /// Open a connection to the database.
+    ///
+    /// The generic parameter `T` is used to know what options to use when opening the database and
+    /// what fields are present. To use the default options and only the default column family, use
+    /// `()`.
+    pub(crate) fn to_connection<T: DbConnectionInfo + ?Sized>(&self) -> Database {
         match self {
             Self::OnDisk { path } => {
                 let mut opts = rocksdb::Options::default();
@@ -29,9 +34,17 @@ impl Location {
     }
 }
 
-pub(crate) trait Connect {
+pub(crate) trait DbConnectionInfo {
+    /// Adjust database options before opening it.
     fn adjust_opts(_opts: &mut rocksdb::Options) {}
+
+    /// The column families to create and open.
+    ///
+    /// The default implementation returns `None`, which means that only the default (anonymous)
+    /// column family is present.
     fn fields() -> Option<impl Iterator<Item = &'static str>> {
         None::<std::array::IntoIter<&str, 0>>
     }
 }
+
+impl DbConnectionInfo for () {}

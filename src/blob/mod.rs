@@ -4,7 +4,7 @@ mod blob_store {
 
 pub use self::blob_store::blob_server::{Blob as BlobRpc, BlobServer};
 pub use self::blob_store::{BlobData, BlobId, UpdateRequest};
-use crate::location::{Connect, Database};
+use crate::db_connection::{Database, DbConnectionInfo};
 use crate::{Location, RpcResponse};
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
@@ -18,7 +18,7 @@ pub struct BlobStore {
     db: Database,
 }
 
-impl Connect for BlobStore {
+impl DbConnectionInfo for BlobStore {
     fn fields() -> Option<impl Iterator<Item = &'static str>> {
         Some(["data", "metadata"].into_iter())
     }
