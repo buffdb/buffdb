@@ -76,14 +76,19 @@ impl BlobRpc for BlobStore {
         let data_col = self.db.cf_handle("data").unwrap();
         let metadata_col = self.db.cf_handle("metadata").unwrap();
 
-        if self.db.key_may_exist_cf(&data_col, id_bytes) {
+        // Check for a collision of the generated identifier. If there is one, try once more before
+        // erroring. Note that there is a TOCTOU issue here, but the odds of any collision at all
+        // is so low that it is hardly worth worrying about. If this somehow becomes a plausible
+        // issue, the ID can be extended to 128 bits from the current 64, rendering a collision all
+        // but impossible.
+        if matches!(self.db.get_cf(&data_col, id_bytes), Ok(Some(_))) {
             id = generate_id();
             id_bytes = id.to_ne_bytes();
 
             // Theoretically it is possible for there to be *another* collision, but it incredibly
             // unlikely to have back-to-back collisions. If it does happen, return an error instead
             // of continuing to retry.
-            if self.db.key_may_exist_cf(&data_col, id_bytes) {
+            if matches!(self.db.get_cf(&data_col, id_bytes), Ok(Some(_))) {
                 return Err(Status::new(
                     tonic::Code::Internal,
                     "failed to generate unique id",
