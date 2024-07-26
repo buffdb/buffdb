@@ -60,3 +60,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 ```
+
+This project is inspired by conversations with Michael Cahill, Professor of Practice, School of Computer Science, University of Sydney
