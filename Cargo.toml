@@ -10,8 +10,17 @@ license = "MIT OR Apache-2.0"
 keywords = ["database", "storage", "embedded", "key-value", "blob"]
 categories = ["database-implementations", "embedded"]
 
+[[bin]]
+name = "buffdb"
+required-features = ["binary"]
+
+[features]
+default = []
+binary = ["dep:anyhow", "dep:clap"]
+
 [dependencies]
-clap = { version = "4.5.10", features = ["derive"] }
+anyhow = { version = "1.0.86", optional = true }
+clap = { version = "4.5.10", features = ["derive"], optional = true }
 prost = "0.13.1"
 rand = "0.8.5"
 rocksdb = { version = "0.22.0", default-features = false, features = ["zstd"] }
