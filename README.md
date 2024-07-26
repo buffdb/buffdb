@@ -1,6 +1,6 @@
 # buffDB
 
-This is an early implementation of a persistence layer for gRPC written in Rust and based on SQLite.
+This is an early implementation of a persistence layer for gRPC written in Rust and based on RocksDB.
 The goal is to abstract a lot of the complexity associated with using protobufs and flattbuffers so
 that mobile users can go fast.
 
@@ -13,8 +13,8 @@ cloned, you can run
 cargo run
 ```
 
-This will start the server on `[::1]:50051`, storing the key-value pairs in `kv_store.sqlite3` and
-the blob data in `blob_store.sqlite3`. All three can be configured with command line flags:
+This will start the server on `[::1]:50051`, storing the key-value pairs in `kv_store.db` and
+the blob data in `blob_store.db`. All three can be configured with command line flags:
 `--addr`, `--kv-store`, and `--blob-store` respectively.
 
 To build with optimizations enabled, run `cargo build --release`. The resulting binary will be

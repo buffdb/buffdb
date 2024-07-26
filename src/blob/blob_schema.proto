@@ -14,7 +14,7 @@ service Blob {
   rpc Update(UpdateRequest) returns (BlobId);
 
   // Deletes a BLOB by its ID.
-  rpc Delete(BlobId) returns (BlobData);
+  rpc Delete(BlobId) returns (BlobId);
 }
 
 // A unique identifier for a BLOB.

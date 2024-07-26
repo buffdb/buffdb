@@ -13,7 +13,8 @@ categories = ["database-implementations", "embedded"]
 [dependencies]
 clap = { version = "4.5.10", features = ["derive"] }
 prost = "0.13.1"
-rusqlite = "0.32.0"
+rand = "0.8.5"
+rocksdb = { version = "0.22.0", default-features = false, features = ["zstd"] }
 tokio = { version = "1", features = [
     "macros",
     "rt-multi-thread",

@@ -4,14 +4,16 @@ package kvstore;
 
 // The service definition.
 service Kv {
-  // Sends a request to get a value for a given key
+  // Sends a request to get a value for a given key.
   rpc Get(Key) returns (Value);
 
-  // Sends a request to set a value for a given key
+  // Sends a request to set a value for a given key.
+  // Returns the key for validation.
   rpc Set(KeyValue) returns (Key);
 
-  // Sends a request to delete a value for a given key
-  rpc Delete(Key) returns (Value);
+  // Sends a request to delete a value for a given key.
+  // Returns the key for validation.
+  rpc Delete(Key) returns (Key);
 }
 
 // The key half of a key-value pair.

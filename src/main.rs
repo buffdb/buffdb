@@ -12,10 +12,10 @@ use tonic::transport::Server;
 #[command(version, about)]
 struct Opts {
     /// The file to store key-value pairs in.
-    #[clap(long, default_value = "kv_store.sqlite3")]
+    #[clap(long, default_value = "kv_store.db")]
     kv_store: PathBuf,
     /// The file to store blobs in.
-    #[clap(long, default_value = "blob_store.sqlite3")]
+    #[clap(long, default_value = "blob_store.db")]
     blob_store: PathBuf,
     #[clap(long, default_value = "[::1]:50051")]
     addr: SocketAddr,
@@ -28,6 +28,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         blob_store,
         addr,
     } = Opts::parse();
+
+    // TODO validate that kv_store and blob_store are not the same
+    // First the paths should be compared, and if *not* equal the inodes should also be compared
+    // (if pre-existing)
 
     let kv_store = buffdb::kv::KvStore::new(kv_store);
     let blob_store = buffdb::blob::BlobStore::new(blob_store);
