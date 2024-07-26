@@ -9,7 +9,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 pub(crate) enum Command {
     #[clap(alias = "serve")]
     Run(RunArgs),
-    #[clap(aliases = &["key-value", "k-v"])]
+    #[clap(aliases = ["key-value", "k-v"])]
     Kv(KvArgs),
     Blob(BlobArgs),
 }
@@ -42,9 +42,9 @@ pub(crate) struct KvArgs {
 pub(crate) enum KvCommand {
     #[clap(alias = "fetch")]
     Get { key: String },
-    #[clap(aliases = &["put", "save"])]
+    #[clap(aliases = ["put", "save", "store"])]
     Set { key: String, value: String },
-    #[clap(aliases = &["remove", "rm"])]
+    #[clap(aliases = ["remove", "rm"])]
     Delete { key: String },
 }
 
@@ -60,11 +60,13 @@ pub(crate) struct BlobArgs {
 /// Execute a query on the blob store
 #[derive(Debug, Subcommand)]
 pub(crate) enum BlobCommand {
+    #[clap(alias = "fetch")]
     Get {
         id: u64,
         #[arg(default_value_t)]
         mode: BlobGetMode,
     },
+    #[clap(aliases = ["put", "save", "set"])]
     Store {
         file_path: PathBuf,
         metadata: Option<String>,
@@ -82,8 +84,11 @@ pub(crate) enum BlobCommand {
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
 pub(crate) enum BlobGetMode {
+    #[clap(aliases = ["bytes", "blob"])]
     Data,
+    #[clap(alias = "meta")]
     Metadata,
+    #[clap(alias = "both")]
     #[default]
     All,
 }

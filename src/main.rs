@@ -1,9 +1,10 @@
 mod cli;
 
 use anyhow::{bail, Result};
-use buffdb::blob::{BlobServer, BlobStore};
+use buffdb::blob::{self, BlobRpc, BlobServer, BlobStore};
 use buffdb::kv::{self, KeyValueRpc, KeyValueServer, KvStore};
 use clap::Parser as _;
+use tokio::io::AsyncWriteExt as _;
 use tonic::transport::Server;
 use tonic::Request;
 
@@ -81,7 +82,38 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<()> {
     }
 }
 
+// TODO support `-` as a file path to read from stdin for store & update
 async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<()> {
-    dbg!(store, command);
-    todo!()
+    let store = BlobStore::new(store);
+    match command {
+        cli::BlobCommand::Get { id, mode } => {
+            let blob = store
+                .get(Request::new(blob::BlobId { id }))
+                .await?
+                .into_inner();
+            match mode {
+                cli::BlobGetMode::Data => tokio::io::stdout().write_all(&blob.bytes).await?,
+                cli::BlobGetMode::Metadata => {
+                    if let Some(metadata) = blob.metadata {
+                        tokio::io::stdout().write_all(metadata.as_bytes()).await?
+                    }
+                }
+                cli::BlobGetMode::All => todo!(), // TODO what format should this be in?
+            }
+            Ok(())
+        }
+        cli::BlobCommand::Store {
+            file_path,
+            metadata,
+        } => todo!(),
+        cli::BlobCommand::Update {
+            id,
+            file_path,
+            metadata,
+        } => todo!(),
+        cli::BlobCommand::Delete { id } => {
+            store.delete(Request::new(blob::BlobId { id })).await?;
+            Ok(())
+        }
+    }
 }
