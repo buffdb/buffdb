@@ -214,4 +214,107 @@ mod test {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_eq() -> Result<(), Box<dyn std::error::Error>> {
+        for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
+            KV_STORE
+                .set(Request::new(KeyValue {
+                    key: key.to_owned(),
+                    value: "value_eq".to_owned(),
+                }))
+                .await?;
+        }
+
+        let all_eq = KV_STORE
+            .eq(Request::new(Keys {
+                keys: vec![
+                    "key_a_eq".to_owned(),
+                    "key_b_eq".to_owned(),
+                    "key_c_eq".to_owned(),
+                    "key_d_eq".to_owned(),
+                ],
+            }))
+            .await?
+            .into_inner()
+            .value;
+        assert!(all_eq);
+
+        KV_STORE
+            .set(Request::new(KeyValue {
+                key: "key_e_eq".to_owned(),
+                value: "value2_eq".to_owned(),
+            }))
+            .await?;
+
+        let all_eq = KV_STORE
+            .eq(Request::new(Keys {
+                keys: vec![
+                    "key_a_eq".to_owned(),
+                    "key_b_eq".to_owned(),
+                    "key_c_eq".to_owned(),
+                    "key_d_eq".to_owned(),
+                    "key_e_eq".to_owned(),
+                ],
+            }))
+            .await?
+            .into_inner()
+            .value;
+        assert!(!all_eq);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_not_eq() -> Result<(), Box<dyn std::error::Error>> {
+        for (idx, key) in ["key_a_neq", "key_b_neq", "key_c_neq", "key_d_neq"]
+            .into_iter()
+            .enumerate()
+        {
+            KV_STORE
+                .set(Request::new(KeyValue {
+                    key: key.to_owned(),
+                    value: format!("value{idx}_neq"),
+                }))
+                .await?;
+        }
+
+        let all_neq = KV_STORE
+            .not_eq(Request::new(Keys {
+                keys: vec![
+                    "key_a_neq".to_owned(),
+                    "key_b_neq".to_owned(),
+                    "key_c_neq".to_owned(),
+                    "key_d_neq".to_owned(),
+                ],
+            }))
+            .await?
+            .into_inner()
+            .value;
+        assert!(all_neq);
+
+        KV_STORE
+            .set(Request::new(KeyValue {
+                key: "key_e_neq".to_owned(),
+                value: "value2_neq".to_owned(),
+            }))
+            .await?;
+
+        let all_neq = KV_STORE
+            .not_eq(Request::new(Keys {
+                keys: vec![
+                    "key_a_neq".to_owned(),
+                    "key_b_neq".to_owned(),
+                    "key_c_neq".to_owned(),
+                    "key_d_neq".to_owned(),
+                    "key_e_neq".to_owned(),
+                ],
+            }))
+            .await?
+            .into_inner()
+            .value;
+        assert!(!all_neq);
+
+        Ok(())
+    }
 }
