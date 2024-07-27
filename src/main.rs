@@ -6,12 +6,16 @@ use buffdb::blob::{BlobData, BlobId, BlobRpc, BlobServer, BlobStore, UpdateReque
 use buffdb::kv::{self, KeyValueRpc, KeyValueServer, KvStore};
 use clap::Parser as _;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
 use tonic::Request;
 
-fn main() -> Result<()> {
+const SUCCESS: ExitCode = ExitCode::SUCCESS;
+const FAILURE: ExitCode = ExitCode::FAILURE;
+
+fn main() -> Result<ExitCode> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -31,7 +35,7 @@ async fn run(
         blob_store,
         addr,
     }: RunArgs,
-) -> Result<()> {
+) -> Result<ExitCode> {
     if kv_store == blob_store {
         bail!("kv_store and blob_store cannot be at the same location");
     } else {
@@ -62,10 +66,10 @@ async fn run(
         .serve(addr)
         .await?;
 
-    Ok(())
+    Ok(SUCCESS)
 }
 
-async fn kv(KvArgs { store, command }: KvArgs) -> Result<()> {
+async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     let store = KvStore::new(store);
     match command {
         cli::KvCommand::Get { key } => {
@@ -75,20 +79,29 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<()> {
                 .into_inner()
                 .value;
             println!("{value}");
-            Ok(())
         }
         cli::KvCommand::Set { key, value } => {
             store.set(Request::new(kv::KeyValue { key, value })).await?;
-            Ok(())
         }
         cli::KvCommand::Delete { key } => {
             store.delete(Request::new(kv::Key { key })).await?;
-            Ok(())
+        }
+        cli::KvCommand::Eq { keys } => {
+            let all_eq = store
+                .eq(Request::new(kv::Keys { keys }))
+                .await?
+                .into_inner()
+                .value;
+            if !all_eq {
+                return Ok(FAILURE);
+            }
         }
     }
+
+    Ok(SUCCESS)
 }
 
-async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<()> {
+async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
     let store = BlobStore::new(store);
     match command {
         cli::BlobCommand::Get { id, mode } => {
@@ -170,7 +183,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<()> {
             store.delete(Request::new(BlobId { id })).await?;
         }
     }
-    Ok(())
+    Ok(SUCCESS)
 }
 
 async fn read_file_or_stdin(file_path: PathBuf) -> io::Result<Vec<u8>> {

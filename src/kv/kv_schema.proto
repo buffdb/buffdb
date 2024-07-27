@@ -14,11 +14,26 @@ service Kv {
   // Sends a request to delete a value for a given key.
   // Returns the key for validation.
   rpc Delete(Key) returns (Key);
+
+  // Determine if all provided keys have the same value.
+  rpc Eq(Keys) returns (Bool);
+
+  // Determine if all provided keys have different values.
+  rpc NotEq(Keys) returns (Bool);
+}
+
+message Bool {
+  bool value = 1;
 }
 
 // The key half of a key-value pair.
 message Key {
   string key = 1;
+}
+
+// Multiple keys, each representing a key in a key-value pair.
+message Keys {
+  repeated string keys = 1;
 }
 
 // The value half of a key-value pair.

@@ -4,7 +4,7 @@ mod kv_store {
 
 use crate::db_connection::{Database, DbConnectionInfo};
 pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
-pub use crate::kv::kv_store::{Key, KeyValue, Value};
+pub use crate::kv::kv_store::{Bool, Key, KeyValue, Keys, Value};
 use crate::{Location, RpcResponse};
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
@@ -78,6 +78,41 @@ impl KeyValueRpc for KvStore {
                 "failed to delete key-value pair",
             )),
         }
+    }
+
+    async fn eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
+        let Keys { keys } = request.into_inner();
+        let res = self
+            .db
+            .multi_get(keys)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
+
+        let values = match res {
+            Ok(values) => values,
+            // TODO handle errors more gracefully
+            Err(_) => {
+                return Err(Status::new(
+                    tonic::Code::Internal,
+                    "failed to check if all keys exist",
+                ))
+            }
+        };
+
+        let all_eq = match values.first() {
+            Some(first @ Some(_)) => values.iter().skip(1).all(|v| v == first),
+            // If the first key does not exist, then all values do not exist and cannot be equal.
+            Some(None) => false,
+            // If there are no keys, then all values are by definition equal.
+            None => true,
+        };
+        Ok(Response::new(Bool { value: all_eq }))
+    }
+
+    async fn not_eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
+        let Keys { keys } = request.into_inner();
+
+        todo!()
     }
 }
 
