@@ -1,22 +1,28 @@
 mod cli;
 
+use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
-use buffdb::blob::{self, BlobRpc, BlobServer, BlobStore};
+use buffdb::blob::{BlobData, BlobId, BlobRpc, BlobServer, BlobStore, UpdateRequest};
 use buffdb::kv::{self, KeyValueRpc, KeyValueServer, KvStore};
 use clap::Parser as _;
-use tokio::io::AsyncWriteExt as _;
+use std::path::PathBuf;
+use tokio::fs;
+use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
 use tonic::Request;
 
-use crate::cli::{BlobArgs, Command, KvArgs, RunArgs};
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    match Command::parse() {
-        Command::Run(args) => run(args).await,
-        Command::Kv(args) => kv(args).await,
-        Command::Blob(args) => blob(args).await,
-    }
+fn main() -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Failed building the Runtime")
+        .block_on(async {
+            match Command::parse() {
+                Command::Run(args) => run(args).await,
+                Command::Kv(args) => kv(args).await,
+                Command::Blob(args) => blob(args).await,
+            }
+        })
 }
 
 async fn run(
@@ -82,38 +88,97 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<()> {
     }
 }
 
-// TODO support `-` as a file path to read from stdin for store & update
 async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<()> {
     let store = BlobStore::new(store);
     match command {
         cli::BlobCommand::Get { id, mode } => {
-            let blob = store
-                .get(Request::new(blob::BlobId { id }))
-                .await?
-                .into_inner();
+            let blob = store.get(Request::new(BlobId { id })).await?.into_inner();
             match mode {
-                cli::BlobGetMode::Data => tokio::io::stdout().write_all(&blob.bytes).await?,
+                cli::BlobGetMode::Data => io::stdout().write_all(&blob.bytes).await?,
                 cli::BlobGetMode::Metadata => {
                     if let Some(metadata) = blob.metadata {
-                        tokio::io::stdout().write_all(metadata.as_bytes()).await?
+                        io::stdout().write_all(metadata.as_bytes()).await?
                     }
                 }
-                cli::BlobGetMode::All => todo!(), // TODO what format should this be in?
+                cli::BlobGetMode::All => {
+                    let mut stdout = io::stdout();
+                    if let Some(metadata) = blob.metadata {
+                        stdout.write_all(metadata.as_bytes()).await?;
+                    }
+                    stdout.write_all(&[0]).await?;
+                    stdout.write_all(&blob.bytes).await?;
+                }
             }
-            Ok(())
         }
         cli::BlobCommand::Store {
             file_path,
             metadata,
-        } => todo!(),
+        } => {
+            let BlobId { id } = store
+                .store(Request::new(BlobData {
+                    bytes: read_file_or_stdin(file_path).await?,
+                    metadata,
+                }))
+                .await?
+                .into_inner();
+            println!("{id}");
+        }
         cli::BlobCommand::Update {
             id,
-            file_path,
-            metadata,
-        } => todo!(),
-        cli::BlobCommand::Delete { id } => {
-            store.delete(Request::new(blob::BlobId { id })).await?;
-            Ok(())
+            mode: BlobUpdateMode::Data { file_path },
+        } => {
+            store
+                .update(Request::new(UpdateRequest {
+                    id,
+                    bytes: Some(read_file_or_stdin(file_path).await?),
+                    should_update_metadata: false,
+                    metadata: None,
+                }))
+                .await?;
         }
+        cli::BlobCommand::Update {
+            id,
+            mode: BlobUpdateMode::Metadata { metadata },
+        } => {
+            store
+                .update(Request::new(UpdateRequest {
+                    id,
+                    bytes: None,
+                    should_update_metadata: true,
+                    metadata,
+                }))
+                .await?;
+        }
+        cli::BlobCommand::Update {
+            id,
+            mode:
+                BlobUpdateMode::All {
+                    file_path,
+                    metadata,
+                },
+        } => {
+            store
+                .update(Request::new(UpdateRequest {
+                    id,
+                    bytes: Some(read_file_or_stdin(file_path).await?),
+                    should_update_metadata: true,
+                    metadata,
+                }))
+                .await?;
+        }
+        cli::BlobCommand::Delete { id } => {
+            store.delete(Request::new(BlobId { id })).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn read_file_or_stdin(file_path: PathBuf) -> io::Result<Vec<u8>> {
+    if file_path == PathBuf::from("-") {
+        let mut bytes = Vec::new();
+        io::stdin().read_to_end(&mut bytes).await?;
+        Ok(bytes)
+    } else {
+        Ok(fs::read(file_path).await?)
     }
 }

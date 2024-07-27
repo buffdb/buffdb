@@ -73,18 +73,16 @@ pub(crate) enum BlobCommand {
     },
     Update {
         id: u64,
-        file_path: Option<PathBuf>,
-        // TODO use case for empty string as metadata? could be equivalent to null
-        metadata: Option<Option<String>>,
+        #[clap(subcommand)]
+        mode: BlobUpdateMode,
     },
-    Delete {
-        id: u64,
-    },
+    #[clap(aliases = ["remove", "rm"])]
+    Delete { id: u64 },
 }
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
 pub(crate) enum BlobGetMode {
-    #[clap(aliases = ["bytes", "blob"])]
+    #[clap(aliases = ["bytes", "blob", "content", "contents"])]
     Data,
     #[clap(alias = "meta")]
     Metadata,
@@ -95,10 +93,23 @@ pub(crate) enum BlobGetMode {
 
 impl fmt::Display for BlobGetMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BlobGetMode::Data => write!(f, "data"),
-            BlobGetMode::Metadata => write!(f, "metadata"),
-            BlobGetMode::All => write!(f, "all"),
-        }
+        f.write_str(match self {
+            BlobGetMode::Data => "data",
+            BlobGetMode::Metadata => "metadata",
+            BlobGetMode::All => "all",
+        })
     }
+}
+
+#[derive(Debug, Clone, Subcommand)]
+pub(crate) enum BlobUpdateMode {
+    #[clap(aliases = ["bytes", "blob", "content", "contents"])]
+    Data { file_path: PathBuf },
+    #[clap(alias = "meta")]
+    Metadata { metadata: Option<String> },
+    #[clap(alias = "both")]
+    All {
+        file_path: PathBuf,
+        metadata: Option<String>,
+    },
 }

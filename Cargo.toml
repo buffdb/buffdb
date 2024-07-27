@@ -24,14 +24,7 @@ clap = { version = "4.5.10", features = ["derive"], optional = true }
 prost = "0.13.1"
 rand = "0.8.5"
 rocksdb = { version = "0.22.0", default-features = false, features = ["zstd"] }
-tokio = { version = "1", features = [
-    "macros",
-    "rt-multi-thread",
-    "time",
-    "io-util",
-    "sync",
-    "net",
-] }
+tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tonic = "0.12.1"
 
 [build-dependencies]
