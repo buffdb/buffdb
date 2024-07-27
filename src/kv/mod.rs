@@ -149,22 +149,29 @@ impl KeyValueRpc for KvStore {
 mod test {
     use super::*;
     use std::sync::LazyLock;
+    use tonic::IntoRequest;
 
     static KV_STORE: LazyLock<KvStore> = LazyLock::new(|| KvStore::new("test_kv_store"));
 
     #[tokio::test]
     async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
         KV_STORE
-            .set(Request::new(KeyValue {
-                key: "key_get".to_owned(),
-                value: "value_get".to_owned(),
-            }))
+            .set(
+                KeyValue {
+                    key: "key_get".to_owned(),
+                    value: "value_get".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
 
         let response = KV_STORE
-            .get(Request::new(Key {
-                key: "key_get".to_owned(),
-            }))
+            .get(
+                Key {
+                    key: "key_get".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
         assert_eq!(response.get_ref().value, "value_get");
 
@@ -174,10 +181,13 @@ mod test {
     #[tokio::test]
     async fn test_set() -> Result<(), Box<dyn std::error::Error>> {
         let response = KV_STORE
-            .set(Request::new(KeyValue {
-                key: "key_set".to_owned(),
-                value: "value_set".to_owned(),
-            }))
+            .set(
+                KeyValue {
+                    key: "key_set".to_owned(),
+                    value: "value_set".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
         assert_eq!(
             response.get_ref(),
@@ -192,23 +202,32 @@ mod test {
     #[tokio::test]
     async fn test_delete() -> Result<(), Box<dyn std::error::Error>> {
         KV_STORE
-            .set(Request::new(KeyValue {
-                key: "key_delete".to_owned(),
-                value: "value_delete".to_owned(),
-            }))
+            .set(
+                KeyValue {
+                    key: "key_delete".to_owned(),
+                    value: "value_delete".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
 
         let response = KV_STORE
-            .delete(Request::new(Key {
-                key: "key_delete".to_owned(),
-            }))
+            .delete(
+                Key {
+                    key: "key_delete".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
         assert_eq!(response.get_ref().key, "key_delete");
 
         let response = KV_STORE
-            .get(Request::new(Key {
-                key: "key_delete".to_owned(),
-            }))
+            .get(
+                Key {
+                    key: "key_delete".to_owned(),
+                }
+                .into_request(),
+            )
             .await;
         assert!(response.is_err());
 
@@ -219,36 +238,43 @@ mod test {
     async fn test_eq() -> Result<(), Box<dyn std::error::Error>> {
         for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
             KV_STORE
-                .set(Request::new(KeyValue {
-                    key: key.to_owned(),
-                    value: "value_eq".to_owned(),
-                }))
+                .set(
+                    KeyValue {
+                        key: key.to_owned(),
+                        value: "value_eq".to_owned(),
+                    }
+                    .into_request(),
+                )
                 .await?;
         }
 
         let all_eq = KV_STORE
-            .eq(Request::new(Keys {
+            .eq(Keys {
                 keys: vec![
                     "key_a_eq".to_owned(),
                     "key_b_eq".to_owned(),
                     "key_c_eq".to_owned(),
                     "key_d_eq".to_owned(),
                 ],
-            }))
+            }
+            .into_request())
             .await?
             .into_inner()
             .value;
         assert!(all_eq);
 
         KV_STORE
-            .set(Request::new(KeyValue {
-                key: "key_e_eq".to_owned(),
-                value: "value2_eq".to_owned(),
-            }))
+            .set(
+                KeyValue {
+                    key: "key_e_eq".to_owned(),
+                    value: "value2_eq".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
 
         let all_eq = KV_STORE
-            .eq(Request::new(Keys {
+            .eq(Keys {
                 keys: vec![
                     "key_a_eq".to_owned(),
                     "key_b_eq".to_owned(),
@@ -256,7 +282,8 @@ mod test {
                     "key_d_eq".to_owned(),
                     "key_e_eq".to_owned(),
                 ],
-            }))
+            }
+            .into_request())
             .await?
             .into_inner()
             .value;
@@ -272,44 +299,56 @@ mod test {
             .enumerate()
         {
             KV_STORE
-                .set(Request::new(KeyValue {
-                    key: key.to_owned(),
-                    value: format!("value{idx}_neq"),
-                }))
+                .set(
+                    KeyValue {
+                        key: key.to_owned(),
+                        value: format!("value{idx}_neq"),
+                    }
+                    .into_request(),
+                )
                 .await?;
         }
 
         let all_neq = KV_STORE
-            .not_eq(Request::new(Keys {
-                keys: vec![
-                    "key_a_neq".to_owned(),
-                    "key_b_neq".to_owned(),
-                    "key_c_neq".to_owned(),
-                    "key_d_neq".to_owned(),
-                ],
-            }))
+            .not_eq(
+                Keys {
+                    keys: vec![
+                        "key_a_neq".to_owned(),
+                        "key_b_neq".to_owned(),
+                        "key_c_neq".to_owned(),
+                        "key_d_neq".to_owned(),
+                    ],
+                }
+                .into_request(),
+            )
             .await?
             .into_inner()
             .value;
         assert!(all_neq);
 
         KV_STORE
-            .set(Request::new(KeyValue {
-                key: "key_e_neq".to_owned(),
-                value: "value2_neq".to_owned(),
-            }))
+            .set(
+                KeyValue {
+                    key: "key_e_neq".to_owned(),
+                    value: "value2_neq".to_owned(),
+                }
+                .into_request(),
+            )
             .await?;
 
         let all_neq = KV_STORE
-            .not_eq(Request::new(Keys {
-                keys: vec![
-                    "key_a_neq".to_owned(),
-                    "key_b_neq".to_owned(),
-                    "key_c_neq".to_owned(),
-                    "key_d_neq".to_owned(),
-                    "key_e_neq".to_owned(),
-                ],
-            }))
+            .not_eq(
+                Keys {
+                    keys: vec![
+                        "key_a_neq".to_owned(),
+                        "key_b_neq".to_owned(),
+                        "key_c_neq".to_owned(),
+                        "key_d_neq".to_owned(),
+                        "key_e_neq".to_owned(),
+                    ],
+                }
+                .into_request(),
+            )
             .await?
             .into_inner()
             .value;

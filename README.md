@@ -30,30 +30,29 @@ following code:
 
 ```rust
 use buffdb::kv::{Key, KeyValue, KeyValueRpc, KvStore};
-use tonic::Request;
+use tonic::{Request, IntoRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = KvStore::new_in_memory();
 
     store
-        .set(Request::new(KeyValue {
-            key: "key".to_owned(),
-            value: "value".to_owned(),
-        }))
+        .set(
+            KeyValue {
+                key: "key".to_owned(),
+                value: "value".to_owned(),
+            }
+            .into_request()
+        )
         .await?;
 
     let response = store
-        .delete(Request::new(Key {
-            key: "key".to_owned(),
-        }))
+        .delete(Key { key: "key".to_owned() } .into_request() )
         .await?;
     assert_eq!(response.get_ref().value, "value");
 
     let response = store
-        .get(Request::new(Key {
-            key: "key".to_owned(),
-        }))
+        .get(Key { key: "key".to_owned() }.into_request())
         .await;
     assert!(response.is_err());
 

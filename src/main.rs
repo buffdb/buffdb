@@ -10,7 +10,7 @@ use std::process::ExitCode;
 use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
-use tonic::Request;
+use tonic::IntoRequest as _;
 
 const SUCCESS: ExitCode = ExitCode::SUCCESS;
 const FAILURE: ExitCode = ExitCode::FAILURE;
@@ -74,21 +74,23 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     match command {
         cli::KvCommand::Get { key } => {
             let value = store
-                .get(Request::new(kv::Key { key }))
+                .get(kv::Key { key }.into_request())
                 .await?
                 .into_inner()
                 .value;
             println!("{value}");
         }
         cli::KvCommand::Set { key, value } => {
-            store.set(Request::new(kv::KeyValue { key, value })).await?;
+            store
+                .set(kv::KeyValue { key, value }.into_request())
+                .await?;
         }
         cli::KvCommand::Delete { key } => {
-            store.delete(Request::new(kv::Key { key })).await?;
+            store.delete(kv::Key { key }.into_request()).await?;
         }
         cli::KvCommand::Eq { keys } => {
             let all_eq = store
-                .eq(Request::new(kv::Keys { keys }))
+                .eq(kv::Keys { keys }.into_request())
                 .await?
                 .into_inner()
                 .value;
@@ -98,7 +100,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
         }
         cli::KvCommand::NotEq { keys } => {
             let all_neq = store
-                .not_eq(Request::new(kv::Keys { keys }))
+                .not_eq(kv::Keys { keys }.into_request())
                 .await?
                 .into_inner()
                 .value;
@@ -115,7 +117,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
     let store = BlobStore::new(store);
     match command {
         cli::BlobCommand::Get { id, mode } => {
-            let blob = store.get(Request::new(BlobId { id })).await?.into_inner();
+            let blob = store.get(BlobId { id }.into_request()).await?.into_inner();
             match mode {
                 cli::BlobGetMode::Data => io::stdout().write_all(&blob.bytes).await?,
                 cli::BlobGetMode::Metadata => {
@@ -138,10 +140,13 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             metadata,
         } => {
             let BlobId { id } = store
-                .store(Request::new(BlobData {
-                    bytes: read_file_or_stdin(file_path).await?,
-                    metadata,
-                }))
+                .store(
+                    BlobData {
+                        bytes: read_file_or_stdin(file_path).await?,
+                        metadata,
+                    }
+                    .into_request(),
+                )
                 .await?
                 .into_inner();
             println!("{id}");
@@ -151,12 +156,15 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             mode: BlobUpdateMode::Data { file_path },
         } => {
             store
-                .update(Request::new(UpdateRequest {
-                    id,
-                    bytes: Some(read_file_or_stdin(file_path).await?),
-                    should_update_metadata: false,
-                    metadata: None,
-                }))
+                .update(
+                    UpdateRequest {
+                        id,
+                        bytes: Some(read_file_or_stdin(file_path).await?),
+                        should_update_metadata: false,
+                        metadata: None,
+                    }
+                    .into_request(),
+                )
                 .await?;
         }
         cli::BlobCommand::Update {
@@ -164,12 +172,15 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             mode: BlobUpdateMode::Metadata { metadata },
         } => {
             store
-                .update(Request::new(UpdateRequest {
-                    id,
-                    bytes: None,
-                    should_update_metadata: true,
-                    metadata,
-                }))
+                .update(
+                    UpdateRequest {
+                        id,
+                        bytes: None,
+                        should_update_metadata: true,
+                        metadata,
+                    }
+                    .into_request(),
+                )
                 .await?;
         }
         cli::BlobCommand::Update {
@@ -181,16 +192,19 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 },
         } => {
             store
-                .update(Request::new(UpdateRequest {
-                    id,
-                    bytes: Some(read_file_or_stdin(file_path).await?),
-                    should_update_metadata: true,
-                    metadata,
-                }))
+                .update(
+                    UpdateRequest {
+                        id,
+                        bytes: Some(read_file_or_stdin(file_path).await?),
+                        should_update_metadata: true,
+                        metadata,
+                    }
+                    .into_request(),
+                )
                 .await?;
         }
         cli::BlobCommand::Delete { id } => {
-            store.delete(Request::new(BlobId { id })).await?;
+            store.delete(BlobId { id }.into_request()).await?;
         }
     }
     Ok(SUCCESS)

@@ -178,20 +178,24 @@ impl BlobRpc for BlobStore {
 mod test {
     use super::*;
     use std::sync::LazyLock;
+    use tonic::IntoRequest as _;
 
     static BLOB_STORE: LazyLock<BlobStore> = LazyLock::new(|| BlobStore::new("test_blob_store"));
 
     #[tokio::test]
     async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abcdef".to_vec(),
-                metadata: None,
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"abcdef");
         assert_eq!(response.metadata, None);
@@ -202,15 +206,18 @@ mod test {
     #[tokio::test]
     async fn test_store() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abcdef".to_vec(),
-                metadata: Some("{}".to_owned()),
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: Some("{}".to_owned()),
+                }
+                .into_request(),
+            )
             .await?;
 
         let id = response.into_inner().id;
         let response = BLOB_STORE
-            .get(Request::new(BlobId { id }))
+            .get(BlobId { id }.into_request())
             .await?
             .into_inner();
         assert_eq!(response.bytes, b"abcdef");
@@ -222,24 +229,30 @@ mod test {
     #[tokio::test]
     async fn test_update_both() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abc".to_vec(),
-                metadata: None,
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abc".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
         let response = BLOB_STORE
-            .update(Request::new(UpdateRequest {
-                id,
-                bytes: Some(b"def".to_vec()),
-                should_update_metadata: true,
-                metadata: Some("{}".to_owned()),
-            }))
+            .update(
+                UpdateRequest {
+                    id,
+                    bytes: Some(b"def".to_vec()),
+                    should_update_metadata: true,
+                    metadata: Some("{}".to_owned()),
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"def");
         assert_eq!(response.metadata, Some("{}".to_owned()));
@@ -250,24 +263,30 @@ mod test {
     #[tokio::test]
     async fn test_update_bytes() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abc".to_vec(),
-                metadata: None,
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abc".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
         let response = BLOB_STORE
-            .update(Request::new(UpdateRequest {
-                id,
-                bytes: Some(b"def".to_vec()),
-                should_update_metadata: false,
-                metadata: Some("{}".to_owned()),
-            }))
+            .update(
+                UpdateRequest {
+                    id,
+                    bytes: Some(b"def".to_vec()),
+                    should_update_metadata: false,
+                    metadata: Some("{}".to_owned()),
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"def");
         assert_eq!(response.metadata, None);
@@ -278,24 +297,30 @@ mod test {
     #[tokio::test]
     async fn test_update_metadata() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abc".to_vec(),
-                metadata: None,
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abc".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
         let response = BLOB_STORE
-            .update(Request::new(UpdateRequest {
-                id,
-                bytes: None,
-                should_update_metadata: true,
-                metadata: Some("{}".to_owned()),
-            }))
+            .update(
+                UpdateRequest {
+                    id,
+                    bytes: None,
+                    should_update_metadata: true,
+                    metadata: Some("{}".to_owned()),
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"abc");
         assert_eq!(response.metadata, Some("{}".to_owned()));
@@ -306,17 +331,20 @@ mod test {
     #[tokio::test]
     async fn test_delete_with_metadata() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abcdef".to_vec(),
-                metadata: Some("{}".to_owned()),
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: Some("{}".to_owned()),
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.delete(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.delete(BlobId { id }.into_request()).await?;
         assert_eq!(response.get_ref().id, id);
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await;
         assert!(response.is_err());
 
         Ok(())
@@ -325,17 +353,20 @@ mod test {
     #[tokio::test]
     async fn test_delete_no_metadata() -> Result<(), Box<dyn std::error::Error>> {
         let response = BLOB_STORE
-            .store(Request::new(BlobData {
-                bytes: b"abcdef".to_vec(),
-                metadata: None,
-            }))
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
             .await?;
         let id = response.get_ref().id;
 
-        let response = BLOB_STORE.delete(Request::new(BlobId { id })).await?;
+        let response = BLOB_STORE.delete(BlobId { id }.into_request()).await?;
         assert_eq!(response.get_ref().id, id);
 
-        let response = BLOB_STORE.get(Request::new(BlobId { id })).await;
+        let response = BLOB_STORE.get(BlobId { id }.into_request()).await;
         assert!(response.is_err());
 
         Ok(())
