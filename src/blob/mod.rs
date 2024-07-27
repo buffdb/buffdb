@@ -184,7 +184,7 @@ mod test {
 
     #[tokio::test]
     async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let id = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abcdef".to_vec(),
@@ -192,10 +192,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
+        let response = BLOB_STORE.get(id.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"abcdef");
         assert_eq!(response.metadata, None);
@@ -205,7 +205,7 @@ mod test {
 
     #[tokio::test]
     async fn test_store() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let id = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abcdef".to_vec(),
@@ -213,13 +213,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-
-        let id = response.into_inner().id;
-        let response = BLOB_STORE
-            .get(BlobId { id }.into_request())
             .await?
             .into_inner();
+
+        let response = BLOB_STORE.get(id.into_request()).await?.into_inner();
         assert_eq!(response.bytes, b"abcdef");
         assert_eq!(response.metadata, Some("{}".to_owned()));
 
@@ -228,7 +225,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_both() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let BlobId { id } = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abc".to_vec(),
@@ -236,10 +233,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE
+        let id = BLOB_STORE
             .update(
                 UpdateRequest {
                     id,
@@ -249,10 +246,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
+        let response = BLOB_STORE.get(id.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"def");
         assert_eq!(response.metadata, Some("{}".to_owned()));
@@ -262,7 +259,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_bytes() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let BlobId { id } = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abc".to_vec(),
@@ -270,10 +267,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE
+        let id = BLOB_STORE
             .update(
                 UpdateRequest {
                     id,
@@ -283,10 +280,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
+        let response = BLOB_STORE.get(id.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"def");
         assert_eq!(response.metadata, None);
@@ -296,7 +293,7 @@ mod test {
 
     #[tokio::test]
     async fn test_update_metadata() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let BlobId { id } = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abc".to_vec(),
@@ -304,10 +301,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE
+        let id = BLOB_STORE
             .update(
                 UpdateRequest {
                     id,
@@ -317,10 +314,10 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await?;
+        let response = BLOB_STORE.get(id.into_request()).await?;
         let response = response.get_ref();
         assert_eq!(response.bytes, b"abc");
         assert_eq!(response.metadata, Some("{}".to_owned()));
@@ -330,7 +327,7 @@ mod test {
 
     #[tokio::test]
     async fn test_delete_with_metadata() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let blob_id @ BlobId { id } = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abcdef".to_vec(),
@@ -338,13 +335,16 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.delete(BlobId { id }.into_request()).await?;
-        assert_eq!(response.get_ref().id, id);
+        let response = BLOB_STORE
+            .delete(blob_id.into_request())
+            .await?
+            .into_inner();
+        assert_eq!(response.id, id);
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await;
+        let response = BLOB_STORE.get(blob_id.into_request()).await;
         assert!(response.is_err());
 
         Ok(())
@@ -352,7 +352,7 @@ mod test {
 
     #[tokio::test]
     async fn test_delete_no_metadata() -> Result<(), Box<dyn std::error::Error>> {
-        let response = BLOB_STORE
+        let blob_id @ BlobId { id } = BLOB_STORE
             .store(
                 BlobData {
                     bytes: b"abcdef".to_vec(),
@@ -360,13 +360,16 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        let id = response.get_ref().id;
+            .await?
+            .into_inner();
 
-        let response = BLOB_STORE.delete(BlobId { id }.into_request()).await?;
-        assert_eq!(response.get_ref().id, id);
+        let response = BLOB_STORE
+            .delete(blob_id.into_request())
+            .await?
+            .into_inner();
+        assert_eq!(response.id, id);
 
-        let response = BLOB_STORE.get(BlobId { id }.into_request()).await;
+        let response = BLOB_STORE.get(blob_id.into_request()).await;
         assert!(response.is_err());
 
         Ok(())

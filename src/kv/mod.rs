@@ -165,22 +165,23 @@ mod test {
             )
             .await?;
 
-        let response = KV_STORE
+        let Value { value } = KV_STORE
             .get(
                 Key {
                     key: "key_get".to_owned(),
                 }
                 .into_request(),
             )
-            .await?;
-        assert_eq!(response.get_ref().value, "value_get");
+            .await?
+            .into_inner();
+        assert_eq!(value, "value_get");
 
         Ok(())
     }
 
     #[tokio::test]
     async fn test_set() -> Result<(), Box<dyn std::error::Error>> {
-        let response = KV_STORE
+        let Key { key } = KV_STORE
             .set(
                 KeyValue {
                     key: "key_set".to_owned(),
@@ -188,13 +189,9 @@ mod test {
                 }
                 .into_request(),
             )
-            .await?;
-        assert_eq!(
-            response.get_ref(),
-            &Key {
-                key: "key_set".to_owned()
-            }
-        );
+            .await?
+            .into_inner();
+        assert_eq!(key, "key_set");
 
         Ok(())
     }
@@ -211,15 +208,16 @@ mod test {
             )
             .await?;
 
-        let response = KV_STORE
+        let Key { key } = KV_STORE
             .delete(
                 Key {
                     key: "key_delete".to_owned(),
                 }
                 .into_request(),
             )
-            .await?;
-        assert_eq!(response.get_ref().key, "key_delete");
+            .await?
+            .into_inner();
+        assert_eq!(key, "key_delete");
 
         let response = KV_STORE
             .get(
