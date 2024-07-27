@@ -48,6 +48,8 @@ pub(crate) enum KvCommand {
     Delete { key: String },
     #[clap(aliases = ["equal", "equals"])]
     Eq { keys: Vec<String> },
+    #[clap(aliases = ["unique"])]
+    NotEq { keys: Vec<String> },
 }
 
 #[derive(Debug, Parser)]

@@ -96,6 +96,16 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
                 return Ok(FAILURE);
             }
         }
+        cli::KvCommand::NotEq { keys } => {
+            let all_neq = store
+                .not_eq(Request::new(kv::Keys { keys }))
+                .await?
+                .into_inner()
+                .value;
+            if !all_neq {
+                return Ok(FAILURE);
+            }
+        }
     }
 
     Ok(SUCCESS)

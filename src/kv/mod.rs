@@ -6,6 +6,7 @@ use crate::db_connection::{Database, DbConnectionInfo};
 pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
 pub use crate::kv::kv_store::{Bool, Key, KeyValue, Keys, Value};
 use crate::{Location, RpcResponse};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
 
@@ -111,8 +112,36 @@ impl KeyValueRpc for KvStore {
 
     async fn not_eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
         let Keys { keys } = request.into_inner();
+        let res = self
+            .db
+            .multi_get(keys)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
 
-        todo!()
+        let values = match res {
+            Ok(values) => values,
+            // TODO handle errors more gracefully
+            Err(_) => {
+                return Err(Status::new(
+                    tonic::Code::Internal,
+                    "failed to check if all keys exist",
+                ))
+            }
+        };
+
+        let mut unique_values = HashSet::new();
+        for value in values {
+            // Each key requested must exist.
+            let Some(value) = value else {
+                return Ok(Response::new(Bool { value: false }));
+            };
+            // `insert` returns false if the value already exists.
+            if !unique_values.insert(value) {
+                return Ok(Response::new(Bool { value: false }));
+            }
+        }
+
+        Ok(Response::new(Bool { value: true }))
     }
 }
 
