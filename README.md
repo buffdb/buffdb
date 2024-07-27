@@ -72,6 +72,10 @@ currently supported:
 - `buffdb kv get <KEY>`, printing the value to stdout.
 - `buffdb kv set <KEY> <VALUE>`, setting the value.
 - `buffdb kv delete <KEY>`, deleting the value.
+- `buffdb kv eq [KEYS]...`, exiting successfully if the values for all provided keys are equal.
+  Exits with an error code if any two values are not equal.
+- `buffdb kv not-eq [KEYS]...`, exiting successfully if the values for all provided keys are
+  unique. Exits with an error code if any two values are equal.
 - `buffdb blob get <ID>`, printing the data to stdout. Note that this is arbitrary bytes!
 - `buffdb blob store <FILE> [METADATA]`, storing the file (use `-` for stdin) and printing the ID
   to stdout. Metadata is optional.
@@ -83,9 +87,8 @@ currently supported:
   For `<FILE>`, use `-` for stdin. Omitting `[METADATA]` will set the metadata to null.
 - `buffdb blob delete <ID>`, deleting the blob.
 
-Commands altering a store will exit with a nonzero status code if the key/id does not exist. An
-exception to this is updating the metadata of a blob to be null, as it is not required to exist
-beforehand.
+Commands altering a store will exit with an error code if the key/id does not exist. An exception
+to this is updating the metadata of a blob to be null, as it is not required to exist beforehand.
 
 All commands for `kv` and `blob` can use `-s`/`--store` to specify which store to use. The defaults
 are `kv_store.db` and `blob_store.db` respectively.
