@@ -31,7 +31,7 @@ impl BlobStore {
         P: Into<PathBuf>,
     {
         Self {
-            db: Location::OnDisk { path: path.into() }.to_connection::<Self>(),
+            db: Self::connection(Location::OnDisk { path: path.into() }),
         }
     }
 }
