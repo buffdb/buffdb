@@ -10,7 +10,7 @@ To run the server, you need to [have Rust installed](https://rustup.rs/). Then, 
 cloned, you can run
 
 ```bash
-cargo run
+cargo run -- run
 ```
 
 This will start the server on `[::1]:50051`, storing the key-value pairs in `kv_store.db` and
@@ -23,7 +23,7 @@ file system without issue.
 
 Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as well!
 
-## Example usage in Rust
+## Example library usage in Rust
 
 Run `cargo add buffdb tonic tokio` to add the necessary dependencies. Then you can execute the
 following code:
@@ -62,3 +62,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 This project is inspired by conversations with Michael Cahill, Professor of Practice, School of Computer Science, University of Sydney
+
+## Command line interface
+
+You can use `buffdb help` to see the commands and flags permitted. The following operations are
+currently supported:
+
+- `buffdb run [ADDR]`, starting the server. The default address is `[::1]:50051`.
+- `buffdb kv get <KEY>`, printing the value to stdout.
+- `buffdb kv set <KEY> <VALUE>`, setting the value.
+- `buffdb kv delete <KEY>`, deleting the value.
+- `buffdb blob get <ID>`, printing the data to stdout. Note that this is arbitrary bytes!
+- `buffdb blob store <FILE> [METADATA]`, storing the file (use `-` for stdin) and printing the ID
+  to stdout. Metadata is optional.
+- `buffdb blob update <ID> data <FILE>`, updating the data of the blob. Use `-` for stdin. Metadata
+  is unchanged.
+- `buffdb blob update <ID> metadata [METADATA]`, updating the metadata of the blob. Data is
+  unchanged. Omitting `[METADATA]` will set the metadata to null.
+- `buffdb blob update <ID> all <FILE> [METADATA]`, updating both the data and metadata of the blob.
+  For `<FILE>`, use `-` for stdin. Omitting `[METADATA]` will set the metadata to null.
+- `buffdb blob delete <ID>`, deleting the blob.
+
+Commands altering a store will exit with a nonzero status code if the key/id does not exist. An
+exception to this is updating the metadata of a blob to be null, as it is not required to exist
+beforehand.
+
+All commands for `kv` and `blob` can use `-s`/`--store` to specify which store to use. The defaults
+are `kv_store.db` and `blob_store.db` respectively.
