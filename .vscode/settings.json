@@ -1,7 +1,8 @@
 {
-    "rust-analyzer.linkedProjects": [
-        "./Cargo.toml",
-        "./Cargo.toml",
-        "./Cargo.toml"
-    ]
+    "protoc": {
+        "options": [
+            "-I",
+            "src/schema"
+        ]
+    }
 }

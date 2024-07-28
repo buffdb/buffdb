@@ -1,10 +1,7 @@
-mod blob_store {
-    tonic::include_proto!("blobstore");
-}
-
-pub use self::blob_store::blob_server::{Blob as BlobRpc, BlobServer};
-pub use self::blob_store::{BlobData, BlobId, BlobIds, Bool, UpdateRequest};
 use crate::db_connection::{Database, DbConnectionInfo};
+pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
+pub use crate::schema::blob::{BlobData, BlobId, BlobIds, UpdateRequest};
+use crate::schema::common::Bool;
 use crate::{Location, RpcResponse};
 use std::collections::HashSet;
 use std::path::PathBuf;

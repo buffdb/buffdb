@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-package kvstore;
+package kv;
+import 'common.proto';
 
 // The service definition.
 service Kv {
@@ -19,14 +20,10 @@ service Kv {
   rpc Delete(Key) returns (Key);
 
   // Determine if all provided keys have the same value.
-  rpc Eq(Keys) returns (Bool);
+  rpc Eq(Keys) returns (common.Bool);
 
   // Determine if all provided keys have different values.
-  rpc NotEq(Keys) returns (Bool);
-}
-
-message Bool {
-  bool value = 1;
+  rpc NotEq(Keys) returns (common.Bool);
 }
 
 // The key half of a key-value pair.

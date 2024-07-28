@@ -1,10 +1,7 @@
-mod kv_store {
-    tonic::include_proto!("kvstore");
-}
-
 use crate::db_connection::{Database, DbConnectionInfo};
-pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
-pub use crate::kv::kv_store::{Bool, Key, KeyValue, Keys, Value, Values};
+use crate::schema::common::Bool;
+pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
+pub use crate::schema::kv::{Key, KeyValue, Keys, Value, Values};
 use crate::{Location, RpcResponse};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -37,7 +34,7 @@ impl KvStore {
 }
 
 #[tonic::async_trait]
-impl KeyValueRpc for KvStore {
+impl KvRpc for KvStore {
     async fn get(&self, request: Request<Key>) -> RpcResponse<Value> {
         let Key { key } = request.into_inner();
         let value = self.db.get(key);
@@ -55,7 +52,7 @@ impl KeyValueRpc for KvStore {
         }
     }
 
-    async fn get_many(&self, request: Request<Keys>) -> RpcResponse<kv_store::Values> {
+    async fn get_many(&self, request: Request<Keys>) -> RpcResponse<Values> {
         let Keys { keys } = request.into_inner();
         let res = self
             .db
@@ -83,7 +80,7 @@ impl KeyValueRpc for KvStore {
                 None => return Err(Status::new(tonic::Code::NotFound, "key not found")),
             }
         }
-        Ok(Response::new(kv_store::Values { values }))
+        Ok(Response::new(Values { values }))
     }
 
     async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {

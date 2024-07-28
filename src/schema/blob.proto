@@ -1,6 +1,7 @@
 syntax = "proto3";
 
-package blobstore;
+package blob;
+import 'common.proto';
 
 // Service definition for BLOB operations.
 service Blob {
@@ -17,14 +18,10 @@ service Blob {
   rpc Delete(BlobId) returns (BlobId);
 
   // Determine if all provided BLOB IDs have the same data.
-  rpc EqData(BlobIds) returns (Bool);
+  rpc EqData(BlobIds) returns (common.Bool);
 
   // Determine if all provided BLOB IDs have different data.
-  rpc NotEqData(BlobIds) returns (Bool);
-}
-
-message Bool {
-  bool value = 1;
+  rpc NotEqData(BlobIds) returns (common.Bool);
 }
 
 // A unique identifier for a BLOB.

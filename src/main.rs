@@ -3,7 +3,7 @@ mod cli;
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
 use buffdb::blob::{BlobData, BlobId, BlobIds, BlobRpc, BlobServer, BlobStore, UpdateRequest};
-use buffdb::kv::{self, KeyValueRpc, KeyValueServer, KvStore};
+use buffdb::kv::{self, KvRpc, KvServer, KvStore};
 use clap::Parser as _;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -61,7 +61,7 @@ async fn run(
     let blob_store = BlobStore::new(blob_store);
 
     Server::builder()
-        .add_service(KeyValueServer::new(kv_store))
+        .add_service(KvServer::new(kv_store))
         .add_service(BlobServer::new(blob_store))
         .serve(addr)
         .await?;
