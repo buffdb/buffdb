@@ -56,7 +56,7 @@ impl KvRpc for KvStore {
         let Keys { keys } = request.into_inner();
         let res = self
             .db
-            .multi_get(keys)
+            .multi_get(&keys)
             .into_iter()
             .collect::<Result<Vec<_>, _>>();
 
@@ -72,12 +72,17 @@ impl KvRpc for KvStore {
         };
 
         let mut values = Vec::new();
-        for value in raw_values {
+        for (idx, value) in raw_values.into_iter().enumerate() {
             match value {
                 Some(value) => values.push(
                     String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
                 ),
-                None => return Err(Status::new(tonic::Code::NotFound, "key not found")),
+                None => {
+                    return Err(Status::new(
+                        tonic::Code::NotFound,
+                        format!("key {} not found", keys[idx]),
+                    ))
+                }
             }
         }
         Ok(Response::new(Values { values }))
@@ -376,6 +381,32 @@ mod test {
             .value;
         assert!(!all_neq);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_eq_not_found() -> Result<(), Box<dyn std::error::Error>> {
+        let res = KV_STORE
+            .eq(Keys {
+                keys: vec!["this-key-should-not-exist".to_owned()],
+            }
+            .into_request())
+            .await;
+        assert!(res.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_not_eq_not_found() -> Result<(), Box<dyn std::error::Error>> {
+        let res = KV_STORE
+            .not_eq(
+                Keys {
+                    keys: vec!["this-key-should-not-exist".to_owned()],
+                }
+                .into_request(),
+            )
+            .await;
+        assert!(res.is_err());
         Ok(())
     }
 }

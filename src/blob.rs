@@ -176,7 +176,7 @@ impl BlobRpc for BlobStore {
         let data_col = self.db.cf_handle("data").unwrap();
         let res = self
             .db
-            .multi_get_cf(ids.into_iter().map(|id| (&data_col, id.to_le_bytes())))
+            .multi_get_cf(ids.iter().map(|id| (&data_col, id.to_le_bytes())))
             .into_iter()
             .collect::<Result<Vec<_>, _>>();
 
@@ -189,8 +189,12 @@ impl BlobRpc for BlobStore {
         let all_eq = match blobs.first() {
             Some(first @ Some(_)) => blobs.iter().skip(1).all(|value| value == first),
             // The first ID does not exist, so all blobs cannot be equal.
-            // TODO should this error as "not found" instead?
-            Some(None) => false,
+            Some(None) => {
+                return Err(Status::new(
+                    tonic::Code::NotFound,
+                    format!("id {} not found", ids[0]),
+                ))
+            }
             // If there are no IDs, then all blobs are by definition equal.
             None => true,
         };
@@ -203,7 +207,7 @@ impl BlobRpc for BlobStore {
         let data_col = self.db.cf_handle("data").unwrap();
         let res = self
             .db
-            .multi_get_cf(ids.into_iter().map(|id| (&data_col, id.to_le_bytes())))
+            .multi_get_cf(ids.iter().map(|id| (&data_col, id.to_le_bytes())))
             .into_iter()
             .collect::<Result<Vec<_>, _>>();
 
@@ -219,11 +223,13 @@ impl BlobRpc for BlobStore {
         };
 
         let mut unique_values = HashSet::new();
-        for blob in blobs {
+        for (blob, id) in blobs.into_iter().zip(ids.iter()) {
             // Each requested key must exist.
             let Some(blob) = blob else {
-                // TODO should this error as "not found" instead?
-                return Ok(Response::new(Bool { value: true }));
+                return Err(Status::new(
+                    tonic::Code::NotFound,
+                    format!("id {id} not found"),
+                ));
             };
             // `insert` returns false if the value already exists.
             if !unique_values.insert(blob) {
@@ -548,6 +554,36 @@ mod test {
             .into_inner();
         assert!(response.value);
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_eq_data_not_found() -> Result<(), Box<dyn std::error::Error>> {
+        let res = BLOB_STORE
+            .eq_data(
+                BlobIds {
+                    // If all four of these keys somehow exist, then a test failure is deserved.
+                    ids: vec![0, 1, 2, 3],
+                }
+                .into_request(),
+            )
+            .await;
+        assert!(res.is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_not_eq_data_not_found() -> Result<(), Box<dyn std::error::Error>> {
+        let res = BLOB_STORE
+            .not_eq_data(
+                BlobIds {
+                    // If all four of these keys somehow exist, then a test failure is deserved.
+                    ids: vec![0, 1, 2, 3],
+                }
+                .into_request(),
+            )
+            .await;
+        assert!(res.is_err());
         Ok(())
     }
 }
