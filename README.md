@@ -85,6 +85,10 @@ currently supported:
 - `buffdb blob update <ID> all <FILE> [METADATA]`, updating both the data and metadata of the blob.
   For `<FILE>`, use `-` for stdin. Omitting `[METADATA]` will set the metadata to null.
 - `buffdb blob delete <ID>`, deleting the blob.
+- `buffdb blob eq-data [IDS]...`, exiting successfully if the blobs for all provided IDs are equal.
+  Exits with an error code if any two blobs are not equal.
+- `buffdb blob not-eq-data [IDS]...`, exiting successfully if the blobs for all provided IDs are
+    unique. Exits with an error code if any two blobs are equal.
 
 Commands altering a store will exit with an error code if the key/id does not exist. An exception
 to this is updating the metadata of a blob to be null, as it is not required to exist beforehand.
