@@ -7,6 +7,8 @@ service Kv {
   // Sends a request to get a value for a given key.
   rpc Get(Key) returns (Value);
 
+  rpc GetMany(Keys) returns (Values);
+
   // Sends a request to set a value for a given key.
   // Returns the key for validation.
   rpc Set(KeyValue) returns (Key);
@@ -39,6 +41,11 @@ message Keys {
 // The value half of a key-value pair.
 message Value {
   string value = 1;
+}
+
+// Multiple values, each representing a value in a key-value pair.
+message Values {
+  repeated string values = 1;
 }
 
 // A key-value pair.

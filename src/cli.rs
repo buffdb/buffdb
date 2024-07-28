@@ -41,7 +41,7 @@ pub(crate) struct KvArgs {
 #[derive(Debug, Subcommand)]
 pub(crate) enum KvCommand {
     #[clap(alias = "fetch")]
-    Get { key: String },
+    Get { keys: Vec<String> },
     #[clap(aliases = ["put", "save", "store"])]
     Set { key: String, value: String },
     #[clap(aliases = ["remove", "rm"])]

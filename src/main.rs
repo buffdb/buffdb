@@ -72,13 +72,21 @@ async fn run(
 async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     let store = KvStore::new(store);
     match command {
-        cli::KvCommand::Get { key } => {
-            let value = store
-                .get(kv::Key { key }.into_request())
+        cli::KvCommand::Get { keys } => {
+            let kv::Values { values } = store
+                .get_many(kv::Keys { keys }.into_request())
                 .await?
-                .into_inner()
-                .value;
-            println!("{value}");
+                .into_inner();
+            let mut stdout = io::stdout();
+            let first = values.first();
+            // TODO use `intersperse` when it stabilizes
+            if let Some(first) = first {
+                stdout.write_all(first.as_bytes()).await?;
+            }
+            for value in values.into_iter().skip(1) {
+                stdout.write_all(&[0]).await?;
+                stdout.write_all(value.as_bytes()).await?;
+            }
         }
         cli::KvCommand::Set { key, value } => {
             store

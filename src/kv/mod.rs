@@ -4,7 +4,7 @@ mod kv_store {
 
 use crate::db_connection::{Database, DbConnectionInfo};
 pub use crate::kv::kv_store::kv_server::{Kv as KeyValueRpc, KvServer as KeyValueServer};
-pub use crate::kv::kv_store::{Bool, Key, KeyValue, Keys, Value};
+pub use crate::kv::kv_store::{Bool, Key, KeyValue, Keys, Value, Values};
 use crate::{Location, RpcResponse};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -55,6 +55,37 @@ impl KeyValueRpc for KvStore {
         }
     }
 
+    async fn get_many(&self, request: Request<Keys>) -> RpcResponse<kv_store::Values> {
+        let Keys { keys } = request.into_inner();
+        let res = self
+            .db
+            .multi_get(keys)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
+
+        let raw_values = match res {
+            Ok(values) => values,
+            // TODO handle errors more gracefully
+            Err(_) => {
+                return Err(Status::new(
+                    tonic::Code::Internal,
+                    "failed to check if all keys exist",
+                ))
+            }
+        };
+
+        let mut values = Vec::new();
+        for value in raw_values {
+            match value {
+                Some(value) => values.push(
+                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
+                ),
+                None => return Err(Status::new(tonic::Code::NotFound, "key not found")),
+            }
+        }
+        Ok(Response::new(kv_store::Values { values }))
+    }
+
     async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {
         let KeyValue { key, value } = request.into_inner();
         let res = self.db.put(&key, value.as_bytes());
@@ -82,28 +113,9 @@ impl KeyValueRpc for KvStore {
     }
 
     async fn eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
-        let Keys { keys } = request.into_inner();
-        let res = self
-            .db
-            .multi_get(keys)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>();
-
-        let values = match res {
-            Ok(values) => values,
-            // TODO handle errors more gracefully
-            Err(_) => {
-                return Err(Status::new(
-                    tonic::Code::Internal,
-                    "failed to check if all keys exist",
-                ))
-            }
-        };
-
+        let Values { values } = self.get_many(request).await?.into_inner();
         let all_eq = match values.first() {
-            Some(first @ Some(_)) => values.iter().skip(1).all(|v| v == first),
-            // If the first key does not exist, then all values do not exist and cannot be equal.
-            Some(None) => false,
+            Some(first) => values.iter().skip(1).all(|v| v == first),
             // If there are no keys, then all values are by definition equal.
             None => true,
         };
@@ -111,30 +123,10 @@ impl KeyValueRpc for KvStore {
     }
 
     async fn not_eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
-        let Keys { keys } = request.into_inner();
-        let res = self
-            .db
-            .multi_get(keys)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>();
-
-        let values = match res {
-            Ok(values) => values,
-            // TODO handle errors more gracefully
-            Err(_) => {
-                return Err(Status::new(
-                    tonic::Code::Internal,
-                    "failed to check if all keys exist",
-                ))
-            }
-        };
+        let Values { values } = self.get_many(request).await?.into_inner();
 
         let mut unique_values = HashSet::new();
         for value in values {
-            // Each key requested must exist.
-            let Some(value) = value else {
-                return Ok(Response::new(Bool { value: false }));
-            };
             // `insert` returns false if the value already exists.
             if !unique_values.insert(value) {
                 return Ok(Response::new(Bool { value: false }));
@@ -175,6 +167,41 @@ mod test {
             .await?
             .into_inner();
         assert_eq!(value, "value_get");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn get_many() -> Result<(), Box<dyn std::error::Error>> {
+        KV_STORE
+            .set(
+                KeyValue {
+                    key: "key_a_get_many".to_owned(),
+                    value: "value_a_get_many".to_owned(),
+                }
+                .into_request(),
+            )
+            .await?;
+        KV_STORE
+            .set(
+                KeyValue {
+                    key: "key_b_get_many".to_owned(),
+                    value: "value_b_get_many".to_owned(),
+                }
+                .into_request(),
+            )
+            .await?;
+
+        let Values { values } = KV_STORE
+            .get_many(
+                Keys {
+                    keys: vec!["key_a_get_many".to_owned(), "key_b_get_many".to_owned()],
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        assert_eq!(values, vec!["value_a_get_many", "value_b_get_many"]);
 
         Ok(())
     }
