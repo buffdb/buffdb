@@ -1,4 +1,5 @@
 use crate::db_connection::{Database, DbConnectionInfo};
+use crate::interop::rocksdb_err_to_tonic_status;
 use crate::schema::common::Bool;
 pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
 pub use crate::schema::kv::{Key, KeyValue, Keys, Value, Values};
@@ -38,17 +39,12 @@ impl KvRpc for KvStore {
     async fn get(&self, request: Request<Key>) -> RpcResponse<Value> {
         let Key { key } = request.into_inner();
         let value = self.db.get(key);
-        match value {
+        match value.map_err(rocksdb_err_to_tonic_status)? {
             // https://protobuf.dev/programming-guides/proto3/#scalar
-            Ok(Some(value)) => Ok(Response::new(Value {
+            Some(value) => Ok(Response::new(Value {
                 value: String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
             })),
-            Ok(None) => Err(Status::new(tonic::Code::NotFound, "key not found")),
-            // TODO handle errors more gracefully
-            Err(_) => Err(Status::new(
-                tonic::Code::Internal,
-                "failed to get key-value pair",
-            )),
+            None => Err(Status::new(tonic::Code::NotFound, "key not found")),
         }
     }
 
@@ -59,17 +55,7 @@ impl KvRpc for KvStore {
             .multi_get(&keys)
             .into_iter()
             .collect::<Result<Vec<_>, _>>();
-
-        let raw_values = match res {
-            Ok(values) => values,
-            // TODO handle errors more gracefully
-            Err(_) => {
-                return Err(Status::new(
-                    tonic::Code::Internal,
-                    "failed to check if all keys exist",
-                ))
-            }
-        };
+        let raw_values = res.map_err(rocksdb_err_to_tonic_status)?;
 
         let mut values = Vec::new();
         for (idx, value) in raw_values.into_iter().enumerate() {
@@ -90,28 +76,16 @@ impl KvRpc for KvStore {
 
     async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {
         let KeyValue { key, value } = request.into_inner();
-        let res = self.db.put(&key, value.as_bytes());
-        match res {
-            Ok(_) => Ok(Response::new(Key { key })),
-            // TODO handle errors more gracefully
-            Err(_) => Err(Status::new(
-                tonic::Code::Internal,
-                "failed to set key-value pair",
-            )),
-        }
+        self.db
+            .put(&key, value.as_bytes())
+            .map_err(rocksdb_err_to_tonic_status)?;
+        Ok(Response::new(Key { key }))
     }
 
     async fn delete(&self, request: Request<Key>) -> RpcResponse<Key> {
         let Key { key } = request.into_inner();
-        let res = self.db.delete(&key);
-        match res {
-            Ok(()) => Ok(Response::new(Key { key })),
-            // TODO handle errors more gracefully
-            Err(_) => Err(Status::new(
-                tonic::Code::Internal,
-                "failed to delete key-value pair",
-            )),
-        }
+        self.db.delete(&key).map_err(rocksdb_err_to_tonic_status)?;
+        Ok(Response::new(Key { key }))
     }
 
     async fn eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {

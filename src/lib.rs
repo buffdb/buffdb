@@ -1,5 +1,6 @@
 pub mod blob;
 mod db_connection;
+mod interop;
 pub mod kv;
 
 pub mod schema {

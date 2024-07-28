@@ -1,4 +1,5 @@
 use crate::db_connection::{Database, DbConnectionInfo};
+use crate::interop::rocksdb_err_to_tonic_status;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{BlobData, BlobId, BlobIds, UpdateRequest};
 use crate::schema::common::Bool;
@@ -45,20 +46,12 @@ impl BlobRpc for BlobStore {
         let data = self.db.get_cf(&data_col, id.to_le_bytes());
         let metadata = self.db.get_cf(&metadata_col, id.to_le_bytes());
 
-        let data = match data {
-            Ok(Some(value)) => value,
-            Ok(None) => return Err(Status::new(tonic::Code::NotFound, "id not found")),
-            // TODO handle errors more gracefully
-            Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to get blob")),
+        let Some(data) = data.map_err(rocksdb_err_to_tonic_status)? else {
+            return Err(Status::not_found("id not found"));
         };
-        let metadata = match metadata {
-            Ok(Some(value)) => {
-                Some(String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"))
-            }
-            Ok(None) => None,
-            // TODO handle errors more gracefully
-            Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to get blob")),
-        };
+        let metadata = metadata.map_err(rocksdb_err_to_tonic_status)?.map(|value| {
+            String::from_utf8(value).expect("protobuf requires strings be valid UTF-8")
+        });
 
         Ok(Response::new(BlobData {
             bytes: data,
@@ -87,10 +80,7 @@ impl BlobRpc for BlobStore {
             // unlikely to have back-to-back collisions. If it does happen, return an error instead
             // of continuing to retry.
             if matches!(self.db.get_cf(&data_col, id_bytes), Ok(Some(_))) {
-                return Err(Status::new(
-                    tonic::Code::Internal,
-                    "failed to generate unique id",
-                ));
+                return Err(Status::internal("failed to generate unique id"));
             }
         }
 
@@ -106,11 +96,10 @@ impl BlobRpc for BlobStore {
         // TODO until transactions are used, handle failure of one operation by undoing the other if
         // necessary
 
-        match data_res.and(metadata_res) {
-            Ok(()) => Ok(Response::new(BlobId { id })),
-            // TODO handle errors more gracefully
-            Err(_) => Err(Status::new(tonic::Code::Internal, "failed to store blob")),
-        }
+        data_res
+            .and(metadata_res)
+            .map_err(rocksdb_err_to_tonic_status)?;
+        Ok(Response::new(BlobId { id }))
     }
 
     async fn update(&self, request: Request<UpdateRequest>) -> RpcResponse<BlobId> {
@@ -123,31 +112,23 @@ impl BlobRpc for BlobStore {
 
         if let Some(bytes) = bytes {
             let data_col = self.db.cf_handle("data").unwrap();
-            let res = self.db.put_cf(&data_col, id.to_le_bytes(), &bytes);
-            match res {
-                Ok(()) => (),
-                // TODO handle errors more gracefully
-                Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to update blob")),
-            }
+            self.db
+                .put_cf(&data_col, id.to_le_bytes(), &bytes)
+                .map_err(rocksdb_err_to_tonic_status)?;
         }
 
         if should_update_metadata {
             let metadata_col = self.db.cf_handle("metadata").unwrap();
 
-            let res = if let Some(metadata) = metadata {
+            if let Some(metadata) = metadata {
                 self.db.put_cf(&metadata_col, id.to_le_bytes(), metadata)
             } else {
                 self.db.delete_cf(&metadata_col, id.to_le_bytes())
-            };
-
-            match res {
-                Ok(()) => Ok(Response::new(BlobId { id })),
-                // TODO handle errors more gracefully
-                Err(_) => Err(Status::new(tonic::Code::Internal, "failed to update blob")),
             }
-        } else {
-            Ok(Response::new(BlobId { id }))
+            .map_err(rocksdb_err_to_tonic_status)?;
         }
+
+        Ok(Response::new(BlobId { id }))
     }
 
     async fn delete(&self, request: Request<BlobId>) -> RpcResponse<BlobId> {
@@ -156,45 +137,28 @@ impl BlobRpc for BlobStore {
         let data_col = self.db.cf_handle("data").unwrap();
         let metadata_col = self.db.cf_handle("metadata").unwrap();
 
-        let data_res = self.db.delete_cf(&data_col, id.to_le_bytes());
-        let metadata_res = self.db.delete_cf(&metadata_col, id.to_le_bytes());
+        self.db
+            .delete_cf(&data_col, id.to_le_bytes())
+            .and_then(|_| self.db.delete_cf(&metadata_col, id.to_le_bytes()))
+            .map_err(rocksdb_err_to_tonic_status)?;
 
-        match data_res {
-            Ok(()) => {}
-            // TODO handle errors more gracefully
-            Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to delete blob")),
-        }
-        match metadata_res {
-            Ok(()) => Ok(Response::new(BlobId { id })),
-            // TODO handle errors more gracefully
-            Err(_) => Err(Status::new(tonic::Code::Internal, "failed to delete blob")),
-        }
+        Ok(Response::new(BlobId { id }))
     }
 
     async fn eq_data(&self, request: Request<BlobIds>) -> RpcResponse<Bool> {
         let BlobIds { ids } = request.into_inner();
         let data_col = self.db.cf_handle("data").unwrap();
-        let res = self
+        let blobs = self
             .db
             .multi_get_cf(ids.iter().map(|id| (&data_col, id.to_le_bytes())))
             .into_iter()
-            .collect::<Result<Vec<_>, _>>();
-
-        let blobs = match res {
-            Ok(res) => res,
-            // TODO handle errors more gracefully
-            Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to get blobs")),
-        };
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(rocksdb_err_to_tonic_status)?;
 
         let all_eq = match blobs.first() {
             Some(first @ Some(_)) => blobs.iter().skip(1).all(|value| value == first),
             // The first ID does not exist, so all blobs cannot be equal.
-            Some(None) => {
-                return Err(Status::new(
-                    tonic::Code::NotFound,
-                    format!("id {} not found", ids[0]),
-                ))
-            }
+            Some(None) => return Err(Status::not_found(format!("id {} not found", ids[0]))),
             // If there are no IDs, then all blobs are by definition equal.
             None => true,
         };
@@ -205,31 +169,18 @@ impl BlobRpc for BlobStore {
     async fn not_eq_data(&self, request: Request<BlobIds>) -> RpcResponse<Bool> {
         let BlobIds { ids } = request.into_inner();
         let data_col = self.db.cf_handle("data").unwrap();
-        let res = self
+        let blobs = self
             .db
             .multi_get_cf(ids.iter().map(|id| (&data_col, id.to_le_bytes())))
             .into_iter()
-            .collect::<Result<Vec<_>, _>>();
-
-        let blobs = match res {
-            Ok(blobs) => blobs,
-            // TODO handle errors more gracefully
-            Err(_) => {
-                return Err(Status::new(
-                    tonic::Code::Internal,
-                    "failed to get all blobs",
-                ));
-            }
-        };
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(rocksdb_err_to_tonic_status)?;
 
         let mut unique_values = HashSet::new();
         for (blob, id) in blobs.into_iter().zip(ids.iter()) {
             // Each requested key must exist.
             let Some(blob) = blob else {
-                return Err(Status::new(
-                    tonic::Code::NotFound,
-                    format!("id {id} not found"),
-                ));
+                return Err(Status::not_found(format!("id {id} not found")));
             };
             // `insert` returns false if the value already exists.
             if !unique_values.insert(blob) {
