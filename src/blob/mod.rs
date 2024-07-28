@@ -3,9 +3,10 @@ mod blob_store {
 }
 
 pub use self::blob_store::blob_server::{Blob as BlobRpc, BlobServer};
-pub use self::blob_store::{BlobData, BlobId, UpdateRequest};
+pub use self::blob_store::{BlobData, BlobId, BlobIds, Bool, UpdateRequest};
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::{Location, RpcResponse};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
 
@@ -70,7 +71,7 @@ impl BlobRpc for BlobStore {
 
     async fn store(&self, request: Request<BlobData>) -> RpcResponse<BlobId> {
         let mut id = generate_id();
-        let mut id_bytes = id.to_ne_bytes();
+        let mut id_bytes = id.to_le_bytes();
         let BlobData { bytes, metadata } = request.into_inner();
 
         let data_col = self.db.cf_handle("data").unwrap();
@@ -83,7 +84,7 @@ impl BlobRpc for BlobStore {
         // but impossible.
         if matches!(self.db.get_cf(&data_col, id_bytes), Ok(Some(_))) {
             id = generate_id();
-            id_bytes = id.to_ne_bytes();
+            id_bytes = id.to_le_bytes();
 
             // Theoretically it is possible for there to be *another* collision, but it incredibly
             // unlikely to have back-to-back collisions. If it does happen, return an error instead
@@ -171,6 +172,68 @@ impl BlobRpc for BlobStore {
             // TODO handle errors more gracefully
             Err(_) => Err(Status::new(tonic::Code::Internal, "failed to delete blob")),
         }
+    }
+
+    async fn eq_data(&self, request: Request<BlobIds>) -> RpcResponse<Bool> {
+        let BlobIds { ids } = request.into_inner();
+        let data_col = self.db.cf_handle("data").unwrap();
+        let res = self
+            .db
+            .multi_get_cf(ids.into_iter().map(|id| (&data_col, id.to_le_bytes())))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
+
+        let blobs = match res {
+            Ok(res) => res,
+            // TODO handle errors more gracefully
+            Err(_) => return Err(Status::new(tonic::Code::Internal, "failed to get blobs")),
+        };
+
+        let all_eq = match blobs.first() {
+            Some(first @ Some(_)) => blobs.iter().skip(1).all(|value| value == first),
+            // The first ID does not exist, so all blobs cannot be equal.
+            // TODO should this error as "not found" instead?
+            Some(None) => false,
+            // If there are no IDs, then all blobs are by definition equal.
+            None => true,
+        };
+
+        Ok(Response::new(Bool { value: all_eq }))
+    }
+
+    async fn not_eq_data(&self, request: Request<BlobIds>) -> RpcResponse<Bool> {
+        let BlobIds { ids } = request.into_inner();
+        let data_col = self.db.cf_handle("data").unwrap();
+        let res = self
+            .db
+            .multi_get_cf(ids.into_iter().map(|id| (&data_col, id.to_le_bytes())))
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>();
+
+        let blobs = match res {
+            Ok(blobs) => blobs,
+            // TODO handle errors more gracefully
+            Err(_) => {
+                return Err(Status::new(
+                    tonic::Code::Internal,
+                    "failed to get all blobs",
+                ));
+            }
+        };
+
+        let mut unique_values = HashSet::new();
+        for blob in blobs {
+            // Each requested key must exist.
+            let Some(blob) = blob else {
+                // TODO should this error as "not found" instead?
+                return Ok(Response::new(Bool { value: true }));
+            };
+            // `insert` returns false if the value already exists.
+            if !unique_values.insert(blob) {
+                return Ok(Response::new(Bool { value: false }));
+            }
+        }
+        Ok(Response::new(Bool { value: true }))
     }
 }
 
@@ -371,6 +434,122 @@ mod test {
 
         let response = BLOB_STORE.get(blob_id.into_request()).await;
         assert!(response.is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_eq_data() -> Result<(), Box<dyn std::error::Error>> {
+        let BlobId { id: id1 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        let BlobId { id: id2 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        let BlobId { id: id3 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"ghijkl".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+
+        let response = BLOB_STORE
+            .eq_data(
+                BlobIds {
+                    ids: vec![id1, id2],
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        assert!(response.value);
+
+        let response = BLOB_STORE
+            .eq_data(
+                BlobIds {
+                    ids: vec![id1, id2, id3],
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        assert!(!response.value);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_not_eq_data() -> Result<(), Box<dyn std::error::Error>> {
+        let BlobId { id: id1 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        let BlobId { id: id2 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"abcdef".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        let BlobId { id: id3 } = BLOB_STORE
+            .store(
+                BlobData {
+                    bytes: b"ghijkl".to_vec(),
+                    metadata: None,
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+
+        let response = BLOB_STORE
+            .not_eq_data(
+                BlobIds {
+                    ids: vec![id1, id2],
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        assert!(!response.value);
+
+        let response = BLOB_STORE
+            .not_eq_data(
+                BlobIds {
+                    ids: vec![id1, id3],
+                }
+                .into_request(),
+            )
+            .await?
+            .into_inner();
+        assert!(response.value);
 
         Ok(())
     }

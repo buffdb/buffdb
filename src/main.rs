@@ -2,7 +2,7 @@ mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
-use buffdb::blob::{BlobData, BlobId, BlobRpc, BlobServer, BlobStore, UpdateRequest};
+use buffdb::blob::{BlobData, BlobId, BlobIds, BlobRpc, BlobServer, BlobStore, UpdateRequest};
 use buffdb::kv::{self, KeyValueRpc, KeyValueServer, KvStore};
 use clap::Parser as _;
 use std::path::PathBuf;
@@ -213,6 +213,26 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
         }
         cli::BlobCommand::Delete { id } => {
             store.delete(BlobId { id }.into_request()).await?;
+        }
+        cli::BlobCommand::EqData { ids } => {
+            let all_eq = store
+                .eq_data(BlobIds { ids }.into_request())
+                .await?
+                .into_inner()
+                .value;
+            if !all_eq {
+                return Ok(FAILURE);
+            }
+        }
+        cli::BlobCommand::NotEqData { ids } => {
+            let all_neq = store
+                .not_eq_data(BlobIds { ids }.into_request())
+                .await?
+                .into_inner()
+                .value;
+            if !all_neq {
+                return Ok(FAILURE);
+            }
         }
     }
     Ok(SUCCESS)

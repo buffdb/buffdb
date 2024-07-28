@@ -7,6 +7,7 @@ service Kv {
   // Sends a request to get a value for a given key.
   rpc Get(Key) returns (Value);
 
+  // Obtain the values for multiple keys.
   rpc GetMany(Keys) returns (Values);
 
   // Sends a request to set a value for a given key.

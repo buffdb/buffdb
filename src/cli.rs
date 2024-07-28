@@ -81,7 +81,15 @@ pub(crate) enum BlobCommand {
         mode: BlobUpdateMode,
     },
     #[clap(aliases = ["remove", "rm"])]
-    Delete { id: u64 },
+    Delete {
+        id: u64,
+    },
+    EqData {
+        ids: Vec<u64>,
+    },
+    NotEqData {
+        ids: Vec<u64>,
+    },
 }
 
 #[derive(Debug, Default, Clone, Copy, ValueEnum)]
