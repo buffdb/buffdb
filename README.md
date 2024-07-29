@@ -12,25 +12,6 @@ This is an early implementation of a persistence layer for gRPC written in Rust 
 The goal is to abstract a lot of the complexity associated with using protobufs and flattbuffers so
 that mobile users can go fast.
 
-## Background
-
-This project was inspired by our many edge customers of ours dealing with the challenges associated with low-bandwidth and high performance. We hope that we can build a solution that is helpful for teams tageting edge computing environments. 
-
-Today, buffdb’s primary focus is speed: we try to ensure some level of durability for which we pay a performance penalty, but our goal is to eventually be faster than any other embedded database. 
-
-### High-level Goals
-
-* Reducing the overhead of serialization/deserialization.
-* Ensuring consistent data formats between local storage and network communication.
-* Providing faster read/write operations compared to JSON or XML.
-* Compact Data Storage: ProtoBufs can significantly reduce the size of stored data.
-* Interoperability: Seamless integration between the app’s local storage and backend systems.
-
-### Use Cases
-* Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games, fieldwork, airline, collaborative documents, etc.).
-* IoT: For managing device configurations and states locally before syncing with cloud servers.
-
-
 ## How to run
 
 To run the server, you need to [have Rust installed](https://rustup.rs/). Then, with the repository
@@ -122,3 +103,21 @@ to this is updating the metadata of a blob to be null, as it is not required to 
 
 All commands for `kv` and `blob` can use `-s`/`--store` to specify which store to use. The defaults
 are `kv_store.db` and `blob_store.db` respectively.
+
+## Background
+
+This project was inspired by our many edge customers of ours dealing with the challenges associated with low-bandwidth and high performance. We hope that we can build a solution that is helpful for teams tageting edge computing environments. 
+
+Today, buffdb’s primary focus is speed: we try to ensure some level of durability for which we pay a performance penalty, but our goal is to eventually be faster than any other embedded database. 
+
+### High-level Goals
+
+* Reducing the overhead of serialization/deserialization.
+* Ensuring consistent data formats between local storage and network communication.
+* Providing faster read/write operations compared to JSON or XML.
+* Compact Data Storage: ProtoBufs can significantly reduce the size of stored data.
+* Interoperability: Seamless integration between the app’s local storage and backend systems.
+
+### Use Cases
+* Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games, fieldwork, airline, collaborative documents, etc.).
+* IoT: For managing device configurations and states locally before syncing with cloud servers.
