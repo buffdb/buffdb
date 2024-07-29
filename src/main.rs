@@ -3,15 +3,15 @@ mod cli;
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
 use buffdb::blob::{BlobData, BlobId, BlobIds, BlobRpc, BlobServer, BlobStore, UpdateRequest};
-use buffdb::kv::{self, Key, KvClient, KvServer, KvStore, Values};
+use buffdb::kv::{self, Key, KvServer, KvStore, Values};
+use buffdb::transitive;
 use clap::Parser as _;
 use futures::stream;
-use hyper_util::rt::TokioIo;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
-use tonic::transport::{Channel, Endpoint, Server, Uri};
+use tonic::transport::Server;
 use tonic::IntoRequest as _;
 
 const SUCCESS: ExitCode = ExitCode::SUCCESS;
@@ -71,43 +71,8 @@ async fn run(
     Ok(SUCCESS)
 }
 
-// TODO Move this to `lib.rs` such that it can be used in tests as well?
-async fn kv_client(store: PathBuf) -> Result<KvClient<Channel>> {
-    let (client, server) = tokio::io::duplex(1024);
-
-    // TODO obtain an abort handle from the server, return it
-    tokio::spawn(async move {
-        Server::builder()
-            .add_service(KvServer::new(KvStore::new(store)))
-            .serve_with_incoming(tokio_stream::once(Ok::<_, std::io::Error>(server)))
-            .await
-    });
-
-    // Move client to an option so we can _move_ the inner value
-    // on the first attempt to connect. All other attempts will fail.
-    let mut client = Some(client);
-    let channel = Endpoint::try_from("http://[::]:50051")?
-        .connect_with_connector(tower::service_fn(move |_: Uri| {
-            let client = client.take();
-
-            async move {
-                if let Some(client) = client {
-                    Ok(TokioIo::new(client))
-                } else {
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Client already taken",
-                    ))
-                }
-            }
-        }))
-        .await?;
-
-    Ok(KvClient::new(channel))
-}
-
 async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
-    let mut client = kv_client(store).await?;
+    let mut client = transitive::kv_client(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
             let Some(Values { values }) = client
