@@ -1,8 +1,35 @@
-# buffDB
+<p align="center">
+<a href="https://discord.com/channels/1267505649198305384/1267505649969795136"><img width="250" align="center" alt="image" src="https://private-user-images.githubusercontent.com/2353608/353255729-5013aadd-9d9f-4c39-94ae-75a0a53e248c.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MjIyOTMyNzcsIm5iZiI6MTcyMjI5Mjk3NywicGF0aCI6Ii8yMzUzNjA4LzM1MzI1NTcyOS01MDEzYWFkZC05ZDlmLTRjMzktOTRhZS03NWEwYTUzZTI0OGMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI0MDcyOSUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNDA3MjlUMjI0MjU3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9MDc1MzIyNmIyZjdiMjc2OGQ3YzNjNDkyYzk2ZGM0OTljYzkwZWNjYjY1Yjg1OTdhNmMxOTNmMTA5ZGQzYmVmZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmYWN0b3JfaWQ9MCZrZXlfaWQ9MCZyZXBvX2lkPTAifQ.YunLlnK87YSLABLjYNa_dOE4rSEMEJiXjLcD82p3kuk"></a>
+</p>
+
+
+
+# 🦁  buffdb 🦁  
+
+buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/P7KaMw3R) for help and have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/). Many basic things are not yet decided.
 
 This is an early implementation of a persistence layer for gRPC written in Rust and based on RocksDB.
 The goal is to abstract a lot of the complexity associated with using protobufs and flattbuffers so
 that mobile users can go fast.
+
+## Background
+
+This project was inspired by our many edge customers of ours dealing with the challenges associated with low-bandwidth and high performance. We hope that we can build a solution that is helpful for teams tageting edge computing environments. 
+
+Today, buffdb’s primary focus is speed: we try to ensure some level of durability for which we pay a performance penalty, but our goal is to eventually be faster than any other embedded database. 
+
+### High-level Goals
+
+* Reducing the overhead of serialization/deserialization.
+* Ensuring consistent data formats between local storage and network communication.
+* Providing faster read/write operations compared to JSON or XML.
+* Compact Data Storage: ProtoBufs can significantly reduce the size of stored data.
+* Interoperability: Seamless integration between the app’s local storage and backend systems.
+
+### Use Cases
+* Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games, fieldwork, airline, collaborative documents, etc.).
+* IoT: For managing device configurations and states locally before syncing with cloud servers.
+
 
 ## How to run
 
