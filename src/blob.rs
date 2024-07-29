@@ -5,12 +5,13 @@ pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{BlobData, BlobId, BlobIds, UpdateRequest};
 use crate::schema::common::Bool;
 use crate::{Location, RpcResponse};
+use rand::{Rng, SeedableRng};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use tonic::{Request, Response, Status};
 
 fn generate_id() -> u64 {
-    rand::random()
+    rand::rngs::SmallRng::from_entropy().r#gen()
 }
 
 #[derive(Debug)]
