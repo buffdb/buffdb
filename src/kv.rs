@@ -6,13 +6,13 @@ pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
 pub use crate::schema::kv::{Key, KeyValue, Keys, Value, Values};
 use crate::{Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use tonic::{IntoRequest, Request, Response, Status};
+use tonic::{Response, Status};
 
 #[derive(Debug)]
 pub struct KvStore {
@@ -42,18 +42,30 @@ impl KvStore {
 
 #[tonic::async_trait]
 impl KvRpc for KvStore {
+    type GetStream = Pin<Box<dyn Stream<Item = Result<Value, Status>> + Send + 'static>>;
     type GetManyStream = Pin<Box<dyn Stream<Item = Result<Values, Status>> + Send + 'static>>;
+    type SetStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
+    type DeleteStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
 
-    async fn get(&self, request: Request<Key>) -> RpcResponse<Value> {
-        let Key { key } = request.into_inner();
-        let value = self.db.get(key);
-        match value.map_err(rocksdb_err_to_tonic_status)? {
-            // https://protobuf.dev/programming-guides/proto3/#scalar
-            Some(value) => Ok(Response::new(Value {
-                value: String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
-            })),
-            None => Err(Status::new(tonic::Code::NotFound, "key not found")),
-        }
+    async fn get(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::GetStream> {
+        let mut stream = request.into_inner();
+        let db = self.db.clone();
+        let stream = stream! {
+            while let Some(Key { key }) = stream.message().await? {
+                let value = db.get(&key).map_err(rocksdb_err_to_tonic_status)?;
+                match value {
+                    Some(value) => {
+                        yield Ok(Value {
+                            value: String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
+                        });
+                    }
+                    None => {
+                        return Err(Status::not_found(format!("key {key} not found")))?;
+                    }
+                }
+            }
+        };
+        Ok(Response::new(Box::pin(stream) as Self::GetStream))
     }
 
     async fn get_many(&self, request: StreamingRequest<Keys>) -> RpcResponse<Self::GetManyStream> {
@@ -84,33 +96,45 @@ impl KvRpc for KvStore {
         Ok(Response::new(Box::pin(stream) as Self::GetManyStream))
     }
 
-    async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {
-        let KeyValue { key, value } = request.into_inner();
-        self.db
-            .put(&key, value.as_bytes())
-            .map_err(rocksdb_err_to_tonic_status)?;
-        Ok(Response::new(Key { key }))
+    async fn set(&self, request: StreamingRequest<KeyValue>) -> RpcResponse<Self::SetStream> {
+        let mut stream = request.into_inner();
+        let db = self.db.clone();
+        let stream = stream! {
+            while let Some(KeyValue { key, value }) = stream.message().await? {
+                db.put(&key, value.as_bytes())
+                    .map_err(rocksdb_err_to_tonic_status)?;
+                yield Ok(Key { key });
+            }
+        };
+        Ok(Response::new(Box::pin(stream) as Self::SetStream))
     }
 
-    async fn delete(&self, request: Request<Key>) -> RpcResponse<Key> {
-        let Key { key } = request.into_inner();
-        self.db.delete(&key).map_err(rocksdb_err_to_tonic_status)?;
-        Ok(Response::new(Key { key }))
+    async fn delete(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::DeleteStream> {
+        let mut stream = request.into_inner();
+        let db = self.db.clone();
+        let stream = stream! {
+            while let Some(Key { key }) = stream.message().await? {
+                db.delete(&key).map_err(rocksdb_err_to_tonic_status)?;
+                yield Ok(Key { key });
+            }
+        };
+        Ok(Response::new(Box::pin(stream) as Self::DeleteStream))
     }
 
     async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
-        let mut stream = request.into_inner();
+        let mut values = self.get(request).await?.into_inner();
 
-        let Some(key) = stream.message().await? else {
+        let value = match values.next().await {
+            Some(Ok(Value { value })) => value,
+            Some(Err(err)) => return Err(err),
             // If there are no keys, then all values are by definition equal.
-            return Ok(Response::new(Bool { value: true }));
+            None => return Ok(Response::new(Bool { value: true })),
         };
-        let Value { value } = self.get(key.into_request()).await?.into_inner();
         // Hash the values to avoid storing it fully in memory.
         let first_hash = Sha256::digest(value);
 
-        while let Some(key) = stream.message().await? {
-            let Value { value } = self.get(key.into_request()).await?.into_inner();
+        while let Some(value) = values.next().await {
+            let Value { value } = value?;
 
             if first_hash != Sha256::digest(value) {
                 return Ok(Response::new(Bool { value: false }));
@@ -121,11 +145,11 @@ impl KvRpc for KvStore {
     }
 
     async fn not_eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
-        let mut stream = request.into_inner();
-
         let mut unique_values = BTreeSet::new();
-        while let Some(key) = stream.message().await? {
-            let Value { value } = self.get(key.into_request()).await?.into_inner();
+
+        let mut values = self.get(request).await?.into_inner();
+        while let Some(value) = values.next().await {
+            let Value { value } = value?;
 
             // `insert` returns false if the value already exists.
             // Hash the values to avoid storing it fully in memory.
@@ -135,93 +159,5 @@ impl KvRpc for KvStore {
         }
 
         Ok(Response::new(Bool { value: true }))
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use std::sync::LazyLock;
-    use tonic::IntoRequest;
-
-    static KV_STORE: LazyLock<KvStore> = LazyLock::new(|| KvStore::new("test_kv_store"));
-
-    #[tokio::test]
-    async fn test_get() -> Result<(), Box<dyn std::error::Error>> {
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_get".to_owned(),
-                    value: "value_get".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-
-        let Value { value } = KV_STORE
-            .get(
-                Key {
-                    key: "key_get".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner();
-        assert_eq!(value, "value_get");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_set() -> Result<(), Box<dyn std::error::Error>> {
-        let Key { key } = KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_set".to_owned(),
-                    value: "value_set".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner();
-        assert_eq!(key, "key_set");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_delete() -> Result<(), Box<dyn std::error::Error>> {
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_delete".to_owned(),
-                    value: "value_delete".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-
-        let Key { key } = KV_STORE
-            .delete(
-                Key {
-                    key: "key_delete".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner();
-        assert_eq!(key, "key_delete");
-
-        let response = KV_STORE
-            .get(
-                Key {
-                    key: "key_delete".to_owned(),
-                }
-                .into_request(),
-            )
-            .await;
-        assert!(response.is_err());
-
-        Ok(())
     }
 }

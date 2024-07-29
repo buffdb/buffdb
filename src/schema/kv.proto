@@ -6,18 +6,18 @@ import 'common.proto';
 // The service definition.
 service Kv {
   // Sends a request to get a value for a given key.
-  rpc Get(Key) returns (Value);
+  rpc Get(stream Key) returns (stream Value);
 
   // Obtain the values for multiple keys.
   rpc GetMany(stream Keys) returns (stream Values);
 
   // Sends a request to set a value for a given key.
   // Returns the key for validation.
-  rpc Set(KeyValue) returns (Key);
+  rpc Set(stream KeyValue) returns (stream Key);
 
   // Sends a request to delete a value for a given key.
   // Returns the key for validation.
-  rpc Delete(Key) returns (Key);
+  rpc Delete(stream Key) returns (stream Key);
 
   // Determine if all provided keys have the same value.
   rpc Eq(stream Key) returns (common.Bool);

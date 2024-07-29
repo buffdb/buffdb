@@ -97,11 +97,11 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
         }
         cli::KvCommand::Set { key, value } => {
             client
-                .set(kv::KeyValue { key, value }.into_request())
+                .set(stream::iter([kv::KeyValue { key, value }]))
                 .await?;
         }
         cli::KvCommand::Delete { key } => {
-            client.delete(kv::Key { key }.into_request()).await?;
+            client.delete(stream::iter([kv::Key { key }])).await?;
         }
         cli::KvCommand::Eq { keys } => {
             let keys = keys.into_iter().map(|key| Key { key });
