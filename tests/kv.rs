@@ -1,58 +1,16 @@
+mod helpers;
+
+use crate::helpers::assert_stream_eq;
 use anyhow::Result;
 use buffdb::kv::{Key, KeyValue, Keys, Value, Values};
 use buffdb::transitive::kv_client;
-use futures::{stream, Stream, StreamExt as _};
+use futures::{stream, StreamExt as _};
 use serial_test::serial;
+use std::iter;
 use std::path::PathBuf;
 use std::sync::LazyLock;
-use std::{future, iter};
 
 static KV_STORE_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("test_kv_store"));
-
-fn key(key: impl ToString) -> Key {
-    Key {
-        key: key.to_string(),
-    }
-}
-
-fn value(value: impl ToString) -> Value {
-    Value {
-        value: value.to_string(),
-    }
-}
-
-fn values(values: impl IntoIterator<Item = impl ToString>) -> Values {
-    Values {
-        values: values.into_iter().map(|v| v.to_string()).collect(),
-    }
-}
-
-async fn stream_eq<S, ST, X>(mut stream: S, expected: X) -> Result<bool, String>
-where
-    S: Stream<Item = Result<ST, tonic::Status>> + Unpin,
-    ST: PartialEq<X::Item>,
-    X: IntoIterator,
-{
-    let mut expected = expected.into_iter();
-
-    while let Some(stream_item) = stream.next().await {
-        match (stream_item, expected.next()) {
-            (Ok(stream_item), Some(expected_item)) => {
-                if stream_item != expected_item {
-                    return Ok(false);
-                }
-            }
-            (Ok(_), None) => {
-                return Err("stream has more items than expected".to_owned());
-            }
-            (Err(err), _) => {
-                return Err(format!("stream error: {err:?}"));
-            }
-        }
-    }
-
-    Ok(expected.next().is_none())
-}
 
 #[tokio::test]
 #[serial]
@@ -67,10 +25,18 @@ async fn test_get() -> Result<()> {
         .await?;
 
     let stream = client
-        .get(stream::iter([key("key_get")]))
+        .get(stream::iter([Key {
+            key: "key_get".to_owned(),
+        }]))
         .await?
         .into_inner();
-    assert_eq!(stream_eq(stream, [value("value_get")]).await, Ok(true));
+    assert_stream_eq(
+        stream,
+        [Value {
+            value: "value_get".to_owned(),
+        }],
+    )
+    .await;
 
     Ok(())
 }
@@ -94,19 +60,18 @@ async fn test_get_many() -> Result<()> {
         .await?;
 
     let values_stream = client
-        .get_many(stream::once(future::ready(Keys {
+        .get_many(stream::iter([Keys {
             keys: vec!["key_a_get_many".to_owned(), "key_b_get_many".to_owned()],
-        })))
+        }]))
         .await?
         .into_inner();
-    assert_eq!(
-        stream_eq(
-            values_stream,
-            iter::once(values(["value_a_get_many", "value_b_get_many"])),
-        )
-        .await,
-        Ok(true)
-    );
+    assert_stream_eq(
+        values_stream,
+        iter::once(Values {
+            values: vec!["value_a_get_many".to_owned(), "value_b_get_many".to_owned()],
+        }),
+    )
+    .await;
 
     Ok(())
 }
@@ -123,7 +88,13 @@ async fn test_set() -> Result<()> {
         }]))
         .await?
         .into_inner();
-    assert_eq!(stream_eq(stream, [key("key_set")]).await, Ok(true));
+    assert_stream_eq(
+        stream,
+        [Key {
+            key: "key_set".to_owned(),
+        }],
+    )
+    .await;
 
     Ok(())
 }
@@ -141,13 +112,23 @@ async fn test_delete() -> Result<()> {
         .await?;
 
     let stream = client
-        .delete(stream::iter([key("key_delete")]))
+        .delete(stream::iter([Key {
+            key: "key_delete".to_owned(),
+        }]))
         .await?
         .into_inner();
-    assert_eq!(stream_eq(stream, [key("key_delete")]).await, Ok(true));
+    assert_stream_eq(
+        stream,
+        [Key {
+            key: "key_delete".to_owned(),
+        }],
+    )
+    .await;
 
     let mut response = client
-        .get(stream::iter([key("key_delete")]))
+        .get(stream::iter([Key {
+            key: "key_delete".to_owned(),
+        }]))
         .await?
         .into_inner();
     let next = response.next().await;
@@ -172,10 +153,18 @@ async fn test_eq() -> Result<()> {
 
     let all_eq = client
         .eq(stream::iter([
-            key("key_a_eq"),
-            key("key_b_eq"),
-            key("key_c_eq"),
-            key("key_d_eq"),
+            Key {
+                key: "key_a_eq".to_owned(),
+            },
+            Key {
+                key: "key_b_eq".to_owned(),
+            },
+            Key {
+                key: "key_c_eq".to_owned(),
+            },
+            Key {
+                key: "key_d_eq".to_owned(),
+            },
         ]))
         .await?
         .into_inner()
@@ -191,11 +180,21 @@ async fn test_eq() -> Result<()> {
 
     let all_eq = client
         .eq(stream::iter([
-            key("key_a_eq"),
-            key("key_b_eq"),
-            key("key_c_eq"),
-            key("key_d_eq"),
-            key("key_e_eq"),
+            Key {
+                key: "key_a_eq".to_owned(),
+            },
+            Key {
+                key: "key_b_eq".to_owned(),
+            },
+            Key {
+                key: "key_c_eq".to_owned(),
+            },
+            Key {
+                key: "key_d_eq".to_owned(),
+            },
+            Key {
+                key: "key_e_eq".to_owned(),
+            },
         ]))
         .await?
         .into_inner()
@@ -224,10 +223,18 @@ async fn test_not_eq() -> Result<()> {
 
     let all_neq = client
         .not_eq(stream::iter([
-            key("key_a_neq"),
-            key("key_b_neq"),
-            key("key_c_neq"),
-            key("key_d_neq"),
+            Key {
+                key: "key_a_neq".to_owned(),
+            },
+            Key {
+                key: "key_b_neq".to_owned(),
+            },
+            Key {
+                key: "key_c_neq".to_owned(),
+            },
+            Key {
+                key: "key_d_neq".to_owned(),
+            },
         ]))
         .await?
         .into_inner()
@@ -243,11 +250,21 @@ async fn test_not_eq() -> Result<()> {
 
     let all_neq = client
         .not_eq(stream::iter([
-            key("key_a_neq"),
-            key("key_b_neq"),
-            key("key_c_neq"),
-            key("key_d_neq"),
-            key("key_e_neq"),
+            Key {
+                key: "key_a_neq".to_owned(),
+            },
+            Key {
+                key: "key_b_neq".to_owned(),
+            },
+            Key {
+                key: "key_c_neq".to_owned(),
+            },
+            Key {
+                key: "key_d_neq".to_owned(),
+            },
+            Key {
+                key: "key_e_neq".to_owned(),
+            },
         ]))
         .await?
         .into_inner()
@@ -262,7 +279,9 @@ async fn test_not_eq() -> Result<()> {
 async fn test_eq_not_found() -> Result<()> {
     let mut client = kv_client(KV_STORE_PATH.clone()).await?;
     let res = client
-        .eq(stream::iter([key("this-key-should-not-exist")]))
+        .eq(stream::iter([Key {
+            key: "this-key-should-not-exist".to_owned(),
+        }]))
         .await;
     assert!(res.is_err());
     Ok(())
@@ -273,7 +292,9 @@ async fn test_eq_not_found() -> Result<()> {
 async fn test_not_eq_not_found() -> Result<()> {
     let mut client = kv_client(KV_STORE_PATH.clone()).await?;
     let res = client
-        .not_eq(stream::iter([key("this-key-should-not-exist")]))
+        .not_eq(stream::iter([Key {
+            key: "this-key-should-not-exist".to_owned(),
+        }]))
         .await;
     assert!(res.is_err());
     Ok(())
