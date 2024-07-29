@@ -1,16 +1,22 @@
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::interop::rocksdb_err_to_tonic_status;
 use crate::schema::common::Bool;
+pub use crate::schema::kv::kv_client::KvClient;
 pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
 pub use crate::schema::kv::{Key, KeyValue, Keys, Value, Values};
-use crate::{Location, RpcResponse};
-use std::collections::HashSet;
+use crate::{Location, RpcResponse, StreamingRequest};
+use async_stream::stream;
+use futures::Stream;
+use sha2::{Digest as _, Sha256};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
-use tonic::{Request, Response, Status};
+use std::pin::Pin;
+use std::sync::Arc;
+use tonic::{IntoRequest, Request, Response, Status};
 
 #[derive(Debug)]
 pub struct KvStore {
-    db: Database,
+    db: Arc<Database>,
 }
 
 impl DbConnectionInfo for KvStore {
@@ -29,13 +35,15 @@ impl KvStore {
         P: Into<PathBuf>,
     {
         Self {
-            db: Self::connection(Location::OnDisk { path: path.into() }),
+            db: Arc::new(Self::connection(Location::OnDisk { path: path.into() })),
         }
     }
 }
 
 #[tonic::async_trait]
 impl KvRpc for KvStore {
+    type GetManyStream = Pin<Box<dyn Stream<Item = Result<Values, Status>> + Send + 'static>>;
+
     async fn get(&self, request: Request<Key>) -> RpcResponse<Value> {
         let Key { key } = request.into_inner();
         let value = self.db.get(key);
@@ -48,30 +56,32 @@ impl KvRpc for KvStore {
         }
     }
 
-    async fn get_many(&self, request: Request<Keys>) -> RpcResponse<Values> {
-        let Keys { keys } = request.into_inner();
-        let res = self
-            .db
-            .multi_get(&keys)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>();
-        let raw_values = res.map_err(rocksdb_err_to_tonic_status)?;
+    async fn get_many(&self, request: StreamingRequest<Keys>) -> RpcResponse<Self::GetManyStream> {
+        let mut stream = request.into_inner();
+        let db = self.db.clone();
+        let stream = stream! {
+            while let Some(Keys { keys }) = stream.message().await? {
+                let res = db
+                    .multi_get(&keys)
+                    .into_iter()
+                    .collect::<Result<Vec<_>, _>>();
+                let raw_values = res.map_err(rocksdb_err_to_tonic_status)?;
 
-        let mut values = Vec::new();
-        for (idx, value) in raw_values.into_iter().enumerate() {
-            match value {
-                Some(value) => values.push(
-                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
-                ),
-                None => {
-                    return Err(Status::new(
-                        tonic::Code::NotFound,
-                        format!("key {} not found", keys[idx]),
-                    ))
+                let mut values = Vec::new();
+                for (idx, value) in raw_values.into_iter().enumerate() {
+                    match value {
+                        Some(value) => values.push(
+                            String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
+                        ),
+                        None => {
+                            Err(Status::not_found(format!("key {} not found", keys[idx])))?;
+                        }
+                    }
                 }
+                yield Ok(Values { values: values.clone() });
             }
-        }
-        Ok(Response::new(Values { values }))
+        };
+        Ok(Response::new(Box::pin(stream) as Self::GetManyStream))
     }
 
     async fn set(&self, request: Request<KeyValue>) -> RpcResponse<Key> {
@@ -88,23 +98,38 @@ impl KvRpc for KvStore {
         Ok(Response::new(Key { key }))
     }
 
-    async fn eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
-        let Values { values } = self.get_many(request).await?.into_inner();
-        let all_eq = match values.first() {
-            Some(first) => values.iter().skip(1).all(|v| v == first),
+    async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
+        let mut stream = request.into_inner();
+
+        let Some(key) = stream.message().await? else {
             // If there are no keys, then all values are by definition equal.
-            None => true,
+            return Ok(Response::new(Bool { value: true }));
         };
-        Ok(Response::new(Bool { value: all_eq }))
+        let Value { value } = self.get(key.into_request()).await?.into_inner();
+        // Hash the values to avoid storing it fully in memory.
+        let first_hash = Sha256::digest(value);
+
+        while let Some(key) = stream.message().await? {
+            let Value { value } = self.get(key.into_request()).await?.into_inner();
+
+            if first_hash != Sha256::digest(value) {
+                return Ok(Response::new(Bool { value: false }));
+            }
+        }
+
+        Ok(Response::new(Bool { value: true }))
     }
 
-    async fn not_eq(&self, request: Request<Keys>) -> RpcResponse<Bool> {
-        let Values { values } = self.get_many(request).await?.into_inner();
+    async fn not_eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
+        let mut stream = request.into_inner();
 
-        let mut unique_values = HashSet::new();
-        for value in values {
+        let mut unique_values = BTreeSet::new();
+        while let Some(key) = stream.message().await? {
+            let Value { value } = self.get(key.into_request()).await?.into_inner();
+
             // `insert` returns false if the value already exists.
-            if !unique_values.insert(value) {
+            // Hash the values to avoid storing it fully in memory.
+            if !unique_values.insert(Sha256::digest(value)) {
                 return Ok(Response::new(Bool { value: false }));
             }
         }
@@ -143,41 +168,6 @@ mod test {
             .await?
             .into_inner();
         assert_eq!(value, "value_get");
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn get_many() -> Result<(), Box<dyn std::error::Error>> {
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_a_get_many".to_owned(),
-                    value: "value_a_get_many".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_b_get_many".to_owned(),
-                    value: "value_b_get_many".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-
-        let Values { values } = KV_STORE
-            .get_many(
-                Keys {
-                    keys: vec!["key_a_get_many".to_owned(), "key_b_get_many".to_owned()],
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner();
-        assert_eq!(values, vec!["value_a_get_many", "value_b_get_many"]);
 
         Ok(())
     }
@@ -232,155 +222,6 @@ mod test {
             .await;
         assert!(response.is_err());
 
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_eq() -> Result<(), Box<dyn std::error::Error>> {
-        for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
-            KV_STORE
-                .set(
-                    KeyValue {
-                        key: key.to_owned(),
-                        value: "value_eq".to_owned(),
-                    }
-                    .into_request(),
-                )
-                .await?;
-        }
-
-        let all_eq = KV_STORE
-            .eq(Keys {
-                keys: vec![
-                    "key_a_eq".to_owned(),
-                    "key_b_eq".to_owned(),
-                    "key_c_eq".to_owned(),
-                    "key_d_eq".to_owned(),
-                ],
-            }
-            .into_request())
-            .await?
-            .into_inner()
-            .value;
-        assert!(all_eq);
-
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_e_eq".to_owned(),
-                    value: "value2_eq".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-
-        let all_eq = KV_STORE
-            .eq(Keys {
-                keys: vec![
-                    "key_a_eq".to_owned(),
-                    "key_b_eq".to_owned(),
-                    "key_c_eq".to_owned(),
-                    "key_d_eq".to_owned(),
-                    "key_e_eq".to_owned(),
-                ],
-            }
-            .into_request())
-            .await?
-            .into_inner()
-            .value;
-        assert!(!all_eq);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_not_eq() -> Result<(), Box<dyn std::error::Error>> {
-        for (idx, key) in ["key_a_neq", "key_b_neq", "key_c_neq", "key_d_neq"]
-            .into_iter()
-            .enumerate()
-        {
-            KV_STORE
-                .set(
-                    KeyValue {
-                        key: key.to_owned(),
-                        value: format!("value{idx}_neq"),
-                    }
-                    .into_request(),
-                )
-                .await?;
-        }
-
-        let all_neq = KV_STORE
-            .not_eq(
-                Keys {
-                    keys: vec![
-                        "key_a_neq".to_owned(),
-                        "key_b_neq".to_owned(),
-                        "key_c_neq".to_owned(),
-                        "key_d_neq".to_owned(),
-                    ],
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner()
-            .value;
-        assert!(all_neq);
-
-        KV_STORE
-            .set(
-                KeyValue {
-                    key: "key_e_neq".to_owned(),
-                    value: "value2_neq".to_owned(),
-                }
-                .into_request(),
-            )
-            .await?;
-
-        let all_neq = KV_STORE
-            .not_eq(
-                Keys {
-                    keys: vec![
-                        "key_a_neq".to_owned(),
-                        "key_b_neq".to_owned(),
-                        "key_c_neq".to_owned(),
-                        "key_d_neq".to_owned(),
-                        "key_e_neq".to_owned(),
-                    ],
-                }
-                .into_request(),
-            )
-            .await?
-            .into_inner()
-            .value;
-        assert!(!all_neq);
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_eq_not_found() -> Result<(), Box<dyn std::error::Error>> {
-        let res = KV_STORE
-            .eq(Keys {
-                keys: vec!["this-key-should-not-exist".to_owned()],
-            }
-            .into_request())
-            .await;
-        assert!(res.is_err());
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_not_eq_not_found() -> Result<(), Box<dyn std::error::Error>> {
-        let res = KV_STORE
-            .not_eq(
-                Keys {
-                    keys: vec!["this-key-should-not-exist".to_owned()],
-                }
-                .into_request(),
-            )
-            .await;
-        assert!(res.is_err());
         Ok(())
     }
 }

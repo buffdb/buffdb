@@ -1,5 +1,6 @@
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::interop::rocksdb_err_to_tonic_status;
+pub use crate::schema::blob::blob_client::BlobClient;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{BlobData, BlobId, BlobIds, UpdateRequest};
 use crate::schema::common::Bool;

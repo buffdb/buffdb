@@ -14,18 +14,41 @@ categories = ["database-implementations", "embedded"]
 name = "buffdb"
 required-features = ["binary"]
 
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+harness = false
+
 [features]
 default = []
-binary = ["dep:anyhow", "dep:clap"]
+binary = [
+    "dep:anyhow",
+    "dep:clap",
+    "dep:tokio-stream",
+    "dep:tower",
+    "dep:hyper-util",
+]
+tower = ["dep:tower"]
+hyper-util = ["dep:hyper-util"]
 
 [dependencies]
 anyhow = { version = "1.0.86", optional = true }
+async-stream = "0.3.5"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
+futures = "0.3.30"
+hyper-util = { version = "0.1.6", optional = true }
 prost = "0.13.1"
 rand = "0.8.5"
 rocksdb = { version = "0.22.0", default-features = false, features = ["zstd"] }
+sha2 = "0.10.8"
 tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
+tokio-stream = { version = "0.1.15", optional = true }
 tonic = "0.12.1"
+tower = { version = "0.4.13", optional = true }
 
 [build-dependencies]
 tonic-build = "0.12.1"
+
+[dev-dependencies]
+anyhow = "1.0.86"
+inventory = "0.3.15"

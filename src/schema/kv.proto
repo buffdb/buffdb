@@ -9,7 +9,7 @@ service Kv {
   rpc Get(Key) returns (Value);
 
   // Obtain the values for multiple keys.
-  rpc GetMany(Keys) returns (Values);
+  rpc GetMany(stream Keys) returns (stream Values);
 
   // Sends a request to set a value for a given key.
   // Returns the key for validation.
@@ -20,10 +20,10 @@ service Kv {
   rpc Delete(Key) returns (Key);
 
   // Determine if all provided keys have the same value.
-  rpc Eq(Keys) returns (common.Bool);
+  rpc Eq(stream Key) returns (common.Bool);
 
   // Determine if all provided keys have different values.
-  rpc NotEq(Keys) returns (common.Bool);
+  rpc NotEq(stream Key) returns (common.Bool);
 }
 
 // The key half of a key-value pair.
