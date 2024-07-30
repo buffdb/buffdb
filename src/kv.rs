@@ -65,7 +65,7 @@ impl KvRpc for KvStore {
 
     async fn get(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream! {
             while let Some(Key { key }) = stream.message().await? {
                 let value = db.query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
@@ -81,7 +81,7 @@ impl KvRpc for KvStore {
 
     async fn set(&self, request: StreamingRequest<KeyValue>) -> RpcResponse<Self::SetStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream! {
             while let Some(KeyValue { key, value }) = stream.message().await? {
                 db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", [&key, &value])
@@ -94,7 +94,7 @@ impl KvRpc for KvStore {
 
     async fn delete(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream! {
             while let Some(Key { key }) = stream.message().await? {
                 db.execute("DELETE FROM kv WHERE key = ?", [&key])

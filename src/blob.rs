@@ -69,7 +69,7 @@ impl BlobRpc for BlobStore {
 
     async fn get(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
         let stream = stream! {
             while let Some(BlobId { id }) = stream.message().await? {
@@ -96,7 +96,7 @@ impl BlobRpc for BlobStore {
 
     async fn store(&self, request: StreamingRequest<BlobData>) -> RpcResponse<Self::StoreStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
         let stream = stream! {
             while let Some(BlobData { bytes, metadata }) = stream.message().await? {
@@ -118,7 +118,7 @@ impl BlobRpc for BlobStore {
         request: StreamingRequest<UpdateRequest>,
     ) -> RpcResponse<Self::UpdateStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
         let stream = stream! {
             while let Some(UpdateRequest {
@@ -157,7 +157,7 @@ impl BlobRpc for BlobStore {
 
     async fn delete(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
-        let db = self.connect();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream! {
             while let Some(BlobId { id }) = stream.message().await? {
                 db.execute("DELETE FROM blob WHERE id = ?", [id])

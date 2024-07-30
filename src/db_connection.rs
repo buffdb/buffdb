@@ -23,15 +23,15 @@ pub(crate) trait DbConnectionInfo {
     fn location(&self) -> &Location;
 
     /// Open a connection to the database.
-    fn connect(&self) -> Database {
+    fn connect(&self) -> duckdb::Result<Database> {
         let conn = match &self.location() {
-            Location::InMemory => Connection::open_in_memory().unwrap(),
-            Location::OnDisk { path } => Connection::open(path).unwrap(),
-        };
+            Location::InMemory => Connection::open_in_memory(),
+            Location::OnDisk { path } => Connection::open(path),
+        }?;
 
         // TODO Wrap this in a boolean to indicate whether this has already been run. This avoids
         // running this every time a connection is opened.
-        Self::initialize(&conn).unwrap();
-        conn
+        Self::initialize(&conn)?;
+        Ok(conn)
     }
 }
