@@ -1,26 +1,46 @@
-pub(crate) fn rocksdb_err_to_tonic_status(rocksdb_err: rocksdb::Error) -> tonic::Status {
-    use rocksdb::ErrorKind;
+pub(crate) fn duckdb_err_to_tonic_status(duckdb_err: duckdb::Error) -> tonic::Status {
+    use duckdb::Error;
     use std::sync::Arc;
     use tonic::Status;
 
-    let mut tonic_err = match rocksdb_err.kind() {
-        ErrorKind::NotFound => Status::not_found("not found"),
-        ErrorKind::Corruption => Status::data_loss("data is corrupted"),
-        ErrorKind::NotSupported => Status::unimplemented("operation not supported"),
-        ErrorKind::InvalidArgument => Status::invalid_argument("invalid argument"),
-        ErrorKind::IOError => Status::internal("I/O error"),
-        ErrorKind::MergeInProgress => Status::aborted("merge in progress"),
-        ErrorKind::Incomplete => Status::internal("incomplete operation"),
-        ErrorKind::ShutdownInProgress => Status::unavailable("shutdown in progress"),
-        ErrorKind::TimedOut => Status::deadline_exceeded("operation timed out"),
-        ErrorKind::Aborted => Status::aborted("operation aborted"),
-        ErrorKind::Busy => Status::unavailable("server is busy"),
-        ErrorKind::Expired => Status::deadline_exceeded("operation expired"),
-        ErrorKind::TryAgain => Status::unavailable("try again"),
-        ErrorKind::CompactionTooLarge => Status::internal("compaction too large"),
-        ErrorKind::ColumnFamilyDropped => Status::internal("column family dropped"),
-        ErrorKind::Unknown => Status::unknown("unknown error"),
+    let mut tonic_err = match duckdb_err {
+        Error::DuckDBFailure(_, _) => todo!(),
+        Error::FromSqlConversionFailure(_, _, _) => todo!(),
+        Error::IntegralValueOutOfRange(_, _) => todo!(),
+        Error::Utf8Error(_) => todo!(),
+        Error::NulError(_) => todo!(),
+        Error::InvalidParameterName(_) => todo!(),
+        Error::InvalidPath(_) => todo!(),
+        Error::ExecuteReturnedResults => todo!(),
+        Error::QueryReturnedNoRows => todo!(),
+        Error::InvalidColumnIndex(_) => todo!(),
+        Error::InvalidColumnName(_) => todo!(),
+        Error::InvalidColumnType(_, _, _) => todo!(),
+        Error::ArrowTypeToDuckdbType(_, _) => todo!(),
+        Error::StatementChangedRows(_) => todo!(),
+        Error::ToSqlConversionFailure(_) => todo!(),
+        Error::InvalidQuery => todo!(),
+        Error::MultipleStatement => todo!(),
+        Error::InvalidParameterCount(_, _) => todo!(),
+        Error::AppendError => todo!(),
+        _ => Status::unknown("unknown error"),
+        // Error::NotFound => Status::not_found("not found"),
+        // Error::Corruption => Status::data_loss("data is corrupted"),
+        // Error::NotSupported => Status::unimplemented("operation not supported"),
+        // Error::InvalidArgument => Status::invalid_argument("invalid argument"),
+        // Error::IOError => Status::internal("I/O error"),
+        // Error::MergeInProgress => Status::aborted("merge in progress"),
+        // Error::Incomplete => Status::internal("incomplete operation"),
+        // Error::ShutdownInProgress => Status::unavailable("shutdown in progress"),
+        // Error::TimedOut => Status::deadline_exceeded("operation timed out"),
+        // Error::Aborted => Status::aborted("operation aborted"),
+        // Error::Busy => Status::unavailable("server is busy"),
+        // Error::Expired => Status::deadline_exceeded("operation expired"),
+        // Error::TryAgain => Status::unavailable("try again"),
+        // Error::CompactionTooLarge => Status::internal("compaction too large"),
+        // Error::ColumnFamilyDropped => Status::internal("column family dropped"),
+        // Error::Unknown => Status::unknown("unknown error"),
     };
-    tonic_err.set_source(Arc::new(rocksdb_err));
+    tonic_err.set_source(Arc::new(duckdb_err));
     tonic_err
 }

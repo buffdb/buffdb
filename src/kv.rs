@@ -1,9 +1,9 @@
 use crate::db_connection::{Database, DbConnectionInfo};
-use crate::interop::rocksdb_err_to_tonic_status;
+use crate::interop::duckdb_err_to_tonic_status;
 use crate::schema::common::Bool;
 pub use crate::schema::kv::kv_client::KvClient;
 pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
-pub use crate::schema::kv::{Key, KeyValue, Keys, Value, Values};
+pub use crate::schema::kv::{Key, KeyValue, Value};
 use crate::{Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use futures::{Stream, StreamExt};
@@ -11,17 +11,24 @@ use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
 use tonic::{Response, Status};
 
 #[derive(Debug)]
 pub struct KvStore {
-    db: Arc<Database>,
+    location: Location,
 }
 
 impl DbConnectionInfo for KvStore {
-    fn adjust_opts(opts: &mut rocksdb::Options) {
-        opts.set_compression_type(rocksdb::DBCompressionType::Zstd);
+    fn initialize(db: &Database) -> duckdb::Result<()> {
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
+            [],
+        )?;
+        Ok(())
+    }
+
+    fn location(&self) -> &Location {
+        &self.location
     }
 }
 
@@ -35,7 +42,14 @@ impl KvStore {
         P: Into<PathBuf>,
     {
         Self {
-            db: Arc::new(Self::connection(Location::OnDisk { path: path.into() })),
+            location: Location::OnDisk { path: path.into() },
+        }
+    }
+
+    #[inline]
+    pub fn new_in_memory() -> Self {
+        Self {
+            location: Location::InMemory,
         }
     }
 }
@@ -43,66 +57,32 @@ impl KvStore {
 #[tonic::async_trait]
 impl KvRpc for KvStore {
     type GetStream = Pin<Box<dyn Stream<Item = Result<Value, Status>> + Send + 'static>>;
-    type GetManyStream = Pin<Box<dyn Stream<Item = Result<Values, Status>> + Send + 'static>>;
     type SetStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
     type DeleteStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
 
     async fn get(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
-        let db = self.db.clone();
+        let db = self.connect();
         let stream = stream! {
             while let Some(Key { key }) = stream.message().await? {
-                let value = db.get(&key).map_err(rocksdb_err_to_tonic_status)?;
-                match value {
-                    Some(value) => {
-                        yield Ok(Value {
-                            value: String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
-                        });
-                    }
-                    None => {
-                        return Err(Status::not_found(format!("key {key} not found")))?;
-                    }
-                }
+                let value = db.query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                    row.get(0)
+                }).map_err(duckdb_err_to_tonic_status)?;
+                yield Ok(Value {
+                    value: String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
+                });
             }
         };
         Ok(Response::new(Box::pin(stream) as Self::GetStream))
     }
 
-    async fn get_many(&self, request: StreamingRequest<Keys>) -> RpcResponse<Self::GetManyStream> {
-        let mut stream = request.into_inner();
-        let db = self.db.clone();
-        let stream = stream! {
-            while let Some(Keys { keys }) = stream.message().await? {
-                let res = db
-                    .multi_get(&keys)
-                    .into_iter()
-                    .collect::<Result<Vec<_>, _>>();
-                let raw_values = res.map_err(rocksdb_err_to_tonic_status)?;
-
-                let mut values = Vec::new();
-                for (idx, value) in raw_values.into_iter().enumerate() {
-                    match value {
-                        Some(value) => values.push(
-                            String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
-                        ),
-                        None => {
-                            Err(Status::not_found(format!("key {} not found", keys[idx])))?;
-                        }
-                    }
-                }
-                yield Ok(Values { values: values.clone() });
-            }
-        };
-        Ok(Response::new(Box::pin(stream) as Self::GetManyStream))
-    }
-
     async fn set(&self, request: StreamingRequest<KeyValue>) -> RpcResponse<Self::SetStream> {
         let mut stream = request.into_inner();
-        let db = self.db.clone();
+        let db = self.connect();
         let stream = stream! {
             while let Some(KeyValue { key, value }) = stream.message().await? {
-                db.put(&key, value.as_bytes())
-                    .map_err(rocksdb_err_to_tonic_status)?;
+                db.execute("INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)", [&key, &value])
+                    .map_err(duckdb_err_to_tonic_status)?;
                 yield Ok(Key { key });
             }
         };
@@ -111,10 +91,11 @@ impl KvRpc for KvStore {
 
     async fn delete(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
-        let db = self.db.clone();
+        let db = self.connect();
         let stream = stream! {
             while let Some(Key { key }) = stream.message().await? {
-                db.delete(&key).map_err(rocksdb_err_to_tonic_status)?;
+                db.execute("DELETE FROM kv WHERE key = ?", [&key])
+                    .map_err(duckdb_err_to_tonic_status)?;
                 yield Ok(Key { key });
             }
         };

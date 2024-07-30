@@ -3,7 +3,7 @@ mod cli;
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
 use buffdb::blob::{BlobData, BlobId, BlobIds, BlobRpc, BlobServer, BlobStore, UpdateRequest};
-use buffdb::kv::{self, Key, KvServer, KvStore, Values};
+use buffdb::kv::{self, Key, KvServer, KvStore, Value};
 use buffdb::transitive;
 use clap::Parser as _;
 use futures::stream;
@@ -75,23 +75,19 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     let mut client = transitive::kv_client(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
-            let Some(Values { values }) = client
-                .get_many(stream::iter([kv::Keys { keys }]))
+            let mut values = client
+                .get(stream::iter(keys.into_iter().map(|key| kv::Key { key })))
                 .await?
-                .into_inner()
-                .message()
-                .await?
-            else {
-                return Ok(FAILURE);
-            };
+                .into_inner();
+
             let mut stdout = io::stdout();
-            let first = values.first();
-            // TODO use `intersperse` when it stabilizes
-            if let Some(first) = first {
-                stdout.write_all(first.as_bytes()).await?;
+            let first = values.message().await?;
+            if let Some(Value { value }) = first {
+                stdout.write_all(value.as_bytes()).await?;
+            } else {
+                return Ok(FAILURE); // TODO enforce this via clap?
             }
-            for value in values.into_iter().skip(1) {
-                stdout.write_all(&[0]).await?;
+            while let Some(Value { value }) = values.message().await? {
                 stdout.write_all(value.as_bytes()).await?;
             }
         }

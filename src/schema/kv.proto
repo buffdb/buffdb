@@ -8,9 +8,6 @@ service Kv {
   // Sends a request to get a value for a given key.
   rpc Get(stream Key) returns (stream Value);
 
-  // Obtain the values for multiple keys.
-  rpc GetMany(stream Keys) returns (stream Values);
-
   // Sends a request to set a value for a given key.
   // Returns the key for validation.
   rpc Set(stream KeyValue) returns (stream Key);
@@ -31,19 +28,9 @@ message Key {
   string key = 1;
 }
 
-// Multiple keys, each representing a key in a key-value pair.
-message Keys {
-  repeated string keys = 1;
-}
-
 // The value half of a key-value pair.
 message Value {
   string value = 1;
-}
-
-// Multiple values, each representing a value in a key-value pair.
-message Values {
-  repeated string values = 1;
 }
 
 // A key-value pair.

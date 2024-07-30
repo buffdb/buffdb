@@ -2,11 +2,10 @@ mod helpers;
 
 use crate::helpers::assert_stream_eq;
 use anyhow::Result;
-use buffdb::kv::{Key, KeyValue, Keys, Value, Values};
+use buffdb::kv::{Key, KeyValue, Value};
 use buffdb::transitive::kv_client;
 use futures::{stream, StreamExt as _};
 use serial_test::serial;
-use std::iter;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 
@@ -35,41 +34,6 @@ async fn test_get() -> Result<()> {
         [Value {
             value: "value_get".to_owned(),
         }],
-    )
-    .await;
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn test_get_many() -> Result<()> {
-    let mut client = kv_client(KV_STORE_PATH.clone()).await?;
-
-    client
-        .set(stream::iter([KeyValue {
-            key: "key_a_get_many".to_owned(),
-            value: "value_a_get_many".to_owned(),
-        }]))
-        .await?;
-    client
-        .set(stream::iter([KeyValue {
-            key: "key_b_get_many".to_owned(),
-            value: "value_b_get_many".to_owned(),
-        }]))
-        .await?;
-
-    let values_stream = client
-        .get_many(stream::iter([Keys {
-            keys: vec!["key_a_get_many".to_owned(), "key_b_get_many".to_owned()],
-        }]))
-        .await?
-        .into_inner();
-    assert_stream_eq(
-        values_stream,
-        iter::once(Values {
-            values: vec!["value_a_get_many".to_owned(), "value_b_get_many".to_owned()],
-        }),
     )
     .await;
 
