@@ -2,13 +2,13 @@
 <a href="https://discord.com/channels/1267505649198305384/1267505649969795136"><img width="250" align="center" alt="image" src="https://private-user-images.githubusercontent.com/2353608/353255729-5013aadd-9d9f-4c39-94ae-75a0a53e248c.png?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJnaXRodWIuY29tIiwiYXVkIjoicmF3LmdpdGh1YnVzZXJjb250ZW50LmNvbSIsImtleSI6ImtleTUiLCJleHAiOjE3MjIyOTMyNzcsIm5iZiI6MTcyMjI5Mjk3NywicGF0aCI6Ii8yMzUzNjA4LzM1MzI1NTcyOS01MDEzYWFkZC05ZDlmLTRjMzktOTRhZS03NWEwYTUzZTI0OGMucG5nP1gtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LUNyZWRlbnRpYWw9QUtJQVZDT0RZTFNBNTNQUUs0WkElMkYyMDI0MDcyOSUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LURhdGU9MjAyNDA3MjlUMjI0MjU3WiZYLUFtei1FeHBpcmVzPTMwMCZYLUFtei1TaWduYXR1cmU9MDc1MzIyNmIyZjdiMjc2OGQ3YzNjNDkyYzk2ZGM0OTljYzkwZWNjYjY1Yjg1OTdhNmMxOTNmMTA5ZGQzYmVmZiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmYWN0b3JfaWQ9MCZrZXlfaWQ9MCZyZXBvX2lkPTAifQ.YunLlnK87YSLABLjYNa_dOE4rSEMEJiXjLcD82p3kuk"></a>
 </p>
 
+# 🦁 buffdb 🦁
 
+buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/P7KaMw3R) for help and
+have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/). Many basic
+things are not yet decided.
 
-# 🦁  buffdb 🦁  
-
-buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/P7KaMw3R) for help and have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/). Many basic things are not yet decided.
-
-This is an early implementation of a persistence layer for gRPC written in Rust and based on RocksDB.
+This is an early implementation of a persistence layer for gRPC written in Rust and based on DuckDB.
 The goal is to abstract a lot of the complexity associated with using protobufs and flattbuffers so
 that mobile users can go fast.
 
@@ -18,57 +18,55 @@ To run the server, you need to [have Rust installed](https://rustup.rs/). Then, 
 cloned, you can run
 
 ```bash
-cargo run -- run
+cargo run --all-features -- run
 ```
 
 This will start the server on `[::1]:50051`, storing the key-value pairs in `kv_store.db` and
 the blob data in `blob_store.db`. All three can be configured with command line flags:
 `--addr`, `--kv-store`, and `--blob-store` respectively.
 
-To build with optimizations enabled, run `cargo build --release`. The resulting binary will be
-located at `target/release/buffdb`. It is statically linked, so it can be moved anywhere on your
-file system without issue.
+To build with optimizations enabled, run `cargo build --all-features --release`. The resulting
+binary will be located at `target/release/buffdb`. It is statically linked, so it can be moved
+anywhere on your file system without issue.
 
 Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as well!
 
 ## Example library usage in Rust
 
-Run `cargo add buffdb tonic tokio` to add the necessary dependencies. Then you can execute the
-following code:
+Run `cargo add buffdb tonic tokio futures` to add the necessary dependencies. Then you can execute
+the following code, which is placed in `src/main.rs`.
 
 ```rust
-use buffdb::kv::{Key, KeyValue, KeyValueRpc, KvStore};
+use buffdb::kv::{Key, KeyValue};
 use tonic::{Request, IntoRequest};
+use futures::{stream, StreamExt as _};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let store = KvStore::new_in_memory();
+    let mut client = buffdb::transitive::kv_client("kv_store.db").await?;
+    client
+        .set(stream::iter([KeyValue {
+            key: "key_set".to_owned(),
+            value: "value_set".to_owned(),
+        }]))
+        .await?
+        .into_inner();
 
-    store
-        .set(
-            KeyValue {
-                key: "key".to_owned(),
-                value: "value".to_owned(),
-            }
-            .into_request()
-        )
-        .await?;
-
-    let response = store
-        .delete(Key { key: "key".to_owned() } .into_request() )
-        .await?;
-    assert_eq!(response.get_ref().value, "value");
-
-    let response = store
-        .get(Key { key: "key".to_owned() }.into_request())
-        .await;
-    assert!(response.is_err());
+    let mut stream = client
+        .get(stream::iter([Key {
+            key: "key_get".to_owned(),
+        }]))
+        .await?
+        .into_inner();
+    let Value { value } = stream.next().await.unwrap()?;
+    assert_eq!(value, "value_get");
 
     Ok(())
 }
 ```
 
-This project is inspired by conversations with Michael Cahill, Professor of Practice, School of Computer Science, University of Sydney
+This project is inspired by conversations with Michael Cahill, Professor of Practice, School of
+Computer Science, University of Sydney
 
 ## Command line interface
 
@@ -106,18 +104,23 @@ are `kv_store.db` and `blob_store.db` respectively.
 
 ## Background
 
-This project was inspired by our many edge customers of ours dealing with the challenges associated with low-bandwidth and high performance. We hope that we can build a solution that is helpful for teams tageting edge computing environments. 
+This project was inspired by our many edge customers of ours dealing with the challenges associated
+with low-bandwidth and high performance. We hope that we can build a solution that is helpful for
+teams tageting edge computing environments.
 
-Today, buffdb’s primary focus is speed: we try to ensure some level of durability for which we pay a performance penalty, but our goal is to eventually be faster than any other embedded database. 
+Today, buffdb’s primary focus is speed: we try to ensure some level of durability for which we pay a
+performance penalty, but our goal is to eventually be faster than any other embedded database.
 
 ### High-level Goals
 
-* Reducing the overhead of serialization/deserialization.
-* Ensuring consistent data formats between local storage and network communication.
-* Providing faster read/write operations compared to JSON or XML.
-* Compact Data Storage: ProtoBufs can significantly reduce the size of stored data.
-* Interoperability: Seamless integration between the app’s local storage and backend systems.
+- Reducing the overhead of serialization/deserialization.
+- Ensuring consistent data formats between local storage and network communication.
+- Providing faster read/write operations compared to JSON or XML.
+- Compact Data Storage: ProtoBufs can significantly reduce the size of stored data.
+- Interoperability: Seamless integration between the app’s local storage and backend systems.
 
 ### Use Cases
-* Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games, fieldwork, airline, collaborative documents, etc.).
-* IoT: For managing device configurations and states locally before syncing with cloud servers.
+
+- Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games,
+  fieldwork, airline, collaborative documents, etc.).
+- IoT: For managing device configurations and states locally before syncing with cloud servers.
