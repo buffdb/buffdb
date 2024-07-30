@@ -19,8 +19,7 @@ const FAILURE: ExitCode = ExitCode::FAILURE;
 fn main() -> Result<ExitCode> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build()
-        .expect("Failed building the Runtime")
+        .build()?
         .block_on(async {
             match Command::parse() {
                 Command::Run(args) => run(args).await,

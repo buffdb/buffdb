@@ -4,13 +4,12 @@ use crate::schema::common::Bool;
 pub use crate::schema::kv::kv_client::KvClient;
 pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
 pub use crate::schema::kv::{Key, KeyValue, Value};
-use crate::{Location, RpcResponse, StreamingRequest};
+use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::pin::Pin;
 use tonic::{Response, Status};
 
 #[derive(Debug)]
@@ -59,9 +58,9 @@ impl KvStore {
 
 #[tonic::async_trait]
 impl KvRpc for KvStore {
-    type GetStream = Pin<Box<dyn Stream<Item = Result<Value, Status>> + Send + 'static>>;
-    type SetStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
-    type DeleteStream = Pin<Box<dyn Stream<Item = Result<Key, Status>> + Send + 'static>>;
+    type GetStream = DynStream<Result<Value, Status>>;
+    type SetStream = DynStream<Result<Key, Status>>;
+    type DeleteStream = DynStream<Result<Key, Status>>;
 
     async fn get(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();

@@ -17,7 +17,10 @@ pub mod schema {
     }
 }
 
+pub use crate::db_connection::Location;
+use futures::Stream;
+use std::pin::Pin;
+
 pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 type StreamingRequest<T> = tonic::Request<tonic::Streaming<T>>;
-
-pub use crate::db_connection::Location;
+type DynStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;

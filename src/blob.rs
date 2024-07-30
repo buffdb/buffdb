@@ -5,13 +5,12 @@ pub use crate::schema::blob::blob_client::BlobClient;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{BlobData, BlobId, UpdateRequest};
 use crate::schema::common::Bool;
-use crate::{Location, RpcResponse, StreamingRequest};
+use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
-use futures::{Stream, StreamExt};
+use futures::StreamExt;
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::pin::Pin;
 use tonic::{Response, Status};
 
 #[derive(Debug)]
@@ -62,10 +61,10 @@ impl BlobStore {
 
 #[tonic::async_trait]
 impl BlobRpc for BlobStore {
-    type GetStream = Pin<Box<dyn Stream<Item = Result<BlobData, Status>> + Send + 'static>>;
-    type StoreStream = Pin<Box<dyn Stream<Item = Result<BlobId, Status>> + Send + 'static>>;
-    type UpdateStream = Pin<Box<dyn Stream<Item = Result<BlobId, Status>> + Send + 'static>>;
-    type DeleteStream = Pin<Box<dyn Stream<Item = Result<BlobId, Status>> + Send + 'static>>;
+    type GetStream = DynStream<Result<BlobData, Status>>;
+    type StoreStream = DynStream<Result<BlobId, Status>>;
+    type UpdateStream = DynStream<Result<BlobId, Status>>;
+    type DeleteStream = DynStream<Result<BlobId, Status>>;
 
     async fn get(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();

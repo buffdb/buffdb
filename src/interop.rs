@@ -1,8 +1,8 @@
-pub(crate) fn duckdb_err_to_tonic_status(duckdb_err: duckdb::Error) -> tonic::Status {
-    use duckdb::Error;
-    use std::sync::Arc;
-    use tonic::Status;
+use duckdb::Error;
+use std::sync::Arc;
+use tonic::Status;
 
+pub(crate) fn duckdb_err_to_tonic_status(duckdb_err: Error) -> Status {
     let mut tonic_err = match &duckdb_err {
         Error::DuckDBFailure(a, b) => Status::internal(format!("DuckDB failure: {a} {b:?}")),
         Error::FromSqlConversionFailure(_, ty, _) => {
