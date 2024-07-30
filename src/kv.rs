@@ -33,11 +33,14 @@ impl DbConnectionInfo for KvStore {
 }
 
 impl KvStore {
-    /// Create a new key-value at the given path.
-    ///
-    /// To store data in memory, use a path pointing to a tmpfs or ramfs.
     #[inline]
-    pub fn new<P>(path: P) -> Self
+    pub fn at_location(location: Location) -> Self {
+        Self { location }
+    }
+
+    /// Create a new key-value at the given path.
+    #[inline]
+    pub fn at_path<P>(path: P) -> Self
     where
         P: Into<PathBuf>,
     {
@@ -47,7 +50,7 @@ impl KvStore {
     }
 
     #[inline]
-    pub fn new_in_memory() -> Self {
+    pub fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
         }

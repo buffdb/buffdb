@@ -38,7 +38,12 @@ impl DbConnectionInfo for BlobStore {
 
 impl BlobStore {
     #[inline]
-    pub fn new<P>(path: P) -> Self
+    pub fn at_location(location: Location) -> Self {
+        Self { location }
+    }
+
+    #[inline]
+    pub fn at_path<P>(path: P) -> Self
     where
         P: Into<PathBuf>,
     {
@@ -48,7 +53,7 @@ impl BlobStore {
     }
 
     #[inline]
-    pub fn new_in_memory() -> Self {
+    pub fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
         }

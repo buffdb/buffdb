@@ -1,17 +1,17 @@
-mod helpers;
-
 use anyhow::{bail, Result};
 use buffdb::blob::{BlobClient, BlobData, BlobId, UpdateRequest};
 use buffdb::transitive::blob_client;
+use buffdb::Location;
 use futures::{stream, StreamExt as _};
 use serial_test::serial;
-use std::path::PathBuf;
 use std::sync::LazyLock;
 use tonic::transport::Channel;
 
 use crate::helpers::assert_stream_eq;
 
-static BLOB_STORE_PATH: LazyLock<PathBuf> = LazyLock::new(|| PathBuf::from("test_blob_store"));
+static BLOB_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
+    path: "blob_store.test.db".into(),
+});
 
 async fn insert_one(client: &mut BlobClient<Channel>, value: BlobData) -> Result<u64> {
     let id = client
@@ -20,18 +20,17 @@ async fn insert_one(client: &mut BlobClient<Channel>, value: BlobData) -> Result
         .into_inner()
         .collect::<Vec<_>>()
         .await;
-    let id = match id.as_slice() {
-        [Ok(BlobId { id })] => *id,
-        [Err(e)] => return Err(e.clone().into()),
+    match id.as_slice() {
+        [Ok(BlobId { id })] => Ok(*id),
+        [Err(e)] => Err(e.clone().into()),
         _ => bail!("expected exactly one BlobId"),
-    };
-    Ok(id)
+    }
 }
 
 #[tokio::test]
 #[serial]
 async fn test_get() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -61,7 +60,7 @@ async fn test_get() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_store() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -91,7 +90,7 @@ async fn test_store() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_both() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -132,7 +131,7 @@ async fn test_update_both() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_bytes() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -170,7 +169,7 @@ async fn test_update_bytes() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_metadata() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -208,7 +207,7 @@ async fn test_update_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete_with_metadata() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -238,7 +237,7 @@ async fn test_delete_with_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete_no_metadata() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -268,7 +267,7 @@ async fn test_delete_no_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq_data() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -313,7 +312,7 @@ async fn test_eq_data() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq_data() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -358,7 +357,7 @@ async fn test_not_eq_data() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq_data_not_found() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
     // If all four of these keys somehow exist, then a test failure is deserved.
     let res = client
         .eq_data(stream::iter([
@@ -375,7 +374,7 @@ async fn test_eq_data_not_found() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq_data_not_found() -> Result<()> {
-    let mut client = blob_client(BLOB_STORE_PATH.clone()).await?;
+    let mut client = blob_client(BLOB_STORE_LOC.clone()).await?;
     // If all four of these keys somehow exist, then a test failure is deserved.
     let res = client
         .not_eq_data(stream::iter([

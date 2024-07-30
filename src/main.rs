@@ -58,8 +58,8 @@ async fn run(
         }
     }
 
-    let kv_store = KvStore::new(kv_store);
-    let blob_store = BlobStore::new(blob_store);
+    let kv_store = KvStore::at_path(kv_store);
+    let blob_store = BlobStore::at_path(blob_store);
 
     Server::builder()
         .add_service(KvServer::new(kv_store))

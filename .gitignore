@@ -1,5 +1,2 @@
 /target
-/test_kv_store
-/test_blob_store
-/blob_store.db
-/kv_store.db
+**/*.db

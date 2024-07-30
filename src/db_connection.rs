@@ -11,6 +11,12 @@ pub enum Location {
     OnDisk { path: PathBuf },
 }
 
+impl From<PathBuf> for Location {
+    fn from(path: PathBuf) -> Self {
+        Location::OnDisk { path }
+    }
+}
+
 pub(crate) trait DbConnectionInfo {
     fn initialize(db: &Database) -> duckdb::Result<()>;
 

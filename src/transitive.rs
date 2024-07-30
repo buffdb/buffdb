@@ -1,8 +1,8 @@
 use crate::blob::{BlobClient, BlobServer, BlobStore};
 use crate::kv::{KvClient, KvServer, KvStore};
+use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use tonic::transport::{Channel, Endpoint, Server};
 
 const DUPLEX_SIZE: usize = 1024;
@@ -28,14 +28,18 @@ impl<T> DerefMut for Transitive<T> {
 
 macro_rules! declare_clients {
     ($(fn $fn_name:ident<$client:ident, $server:ident, $store:ident>;)*) => {$(
-        pub async fn $fn_name(
-            store: PathBuf,
-        ) -> Result<Transitive<$client<Channel>>, tonic::transport::Error> {
+        pub async fn $fn_name<L>(
+            location: L,
+        ) -> Result<Transitive<$client<Channel>>, tonic::transport::Error>
+        where
+            L: Into<Location>,
+        {
+            let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
             tokio::spawn(async move {
                 Server::builder()
-                    .add_service($server::new($store::new(store)))
+                    .add_service($server::new($store::at_location(location)))
                     .serve_with_incoming(
                         tokio_stream::once(Ok::<_, std::io::Error>(server)),
                     )
