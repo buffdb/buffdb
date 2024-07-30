@@ -1,7 +1,7 @@
 [package]
 name = "buffdb"
 authors = ["Marcus Eagan", "Jacob Pratt"]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 description = "Embedded storage at the speed of light."
 repository = "https://github.com/buffdb/buffdb"
@@ -9,6 +9,10 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["database", "storage", "embedded", "key-value", "blob"]
 categories = ["database-implementations", "embedded"]
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--generate-link-to-definition"]
 
 [[bin]]
 name = "buffdb"

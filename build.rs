@@ -1,5 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
+        .protoc_arg("--experimental_allow_proto3_optional") // hyperium/tonic#1331
         .build_server(true)
         .compile(
             &[
@@ -8,7 +9,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "src/schema/kv.proto",
             ],
             &["src/schema"],
-        )
-        .unwrap_or_else(|e| panic!("Failed to compile protos {e:?}"));
+        )?;
     Ok(())
 }
