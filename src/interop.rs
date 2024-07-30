@@ -3,43 +3,43 @@ pub(crate) fn duckdb_err_to_tonic_status(duckdb_err: duckdb::Error) -> tonic::St
     use std::sync::Arc;
     use tonic::Status;
 
-    let mut tonic_err = match duckdb_err {
-        Error::DuckDBFailure(_, _) => todo!(),
-        Error::FromSqlConversionFailure(_, _, _) => todo!(),
-        Error::IntegralValueOutOfRange(_, _) => todo!(),
-        Error::Utf8Error(_) => todo!(),
-        Error::NulError(_) => todo!(),
-        Error::InvalidParameterName(_) => todo!(),
-        Error::InvalidPath(_) => todo!(),
-        Error::ExecuteReturnedResults => todo!(),
-        Error::QueryReturnedNoRows => todo!(),
-        Error::InvalidColumnIndex(_) => todo!(),
-        Error::InvalidColumnName(_) => todo!(),
-        Error::InvalidColumnType(_, _, _) => todo!(),
-        Error::ArrowTypeToDuckdbType(_, _) => todo!(),
-        Error::StatementChangedRows(_) => todo!(),
-        Error::ToSqlConversionFailure(_) => todo!(),
-        Error::InvalidQuery => todo!(),
-        Error::MultipleStatement => todo!(),
-        Error::InvalidParameterCount(_, _) => todo!(),
-        Error::AppendError => todo!(),
+    let mut tonic_err = match &duckdb_err {
+        Error::DuckDBFailure(a, b) => Status::internal(format!("DuckDB failure: {a} {b:?}")),
+        Error::FromSqlConversionFailure(_, ty, _) => {
+            Status::internal(format!("could not convert {ty} to Rust type"))
+        }
+        Error::IntegralValueOutOfRange(_, val) => {
+            Status::out_of_range(format!("integral value {val} out of range"))
+        }
+        Error::Utf8Error(err) => Status::data_loss(format!("UTF-8 error: {err}")),
+        Error::NulError(err) => Status::data_loss(format!("NUL error: {err}")),
+        Error::InvalidParameterName(name) => {
+            Status::internal(format!("invalid parameter name {name}"))
+        }
+        Error::InvalidPath(path) => Status::internal(format!("invalid path {}", path.display())),
+        Error::ExecuteReturnedResults => Status::internal("`execute` returned results"),
+        Error::QueryReturnedNoRows => Status::internal("`query` returned no rows"),
+        Error::InvalidColumnIndex(idx) => Status::internal(format!("invalid column index {idx}")),
+        Error::InvalidColumnName(name) => Status::internal(format!("invalid column name {name}")),
+        Error::InvalidColumnType(_, name, ty) => {
+            Status::internal(format!("invalid column type {ty} for column {name}"))
+        }
+        Error::ArrowTypeToDuckdbType(_, ty) => {
+            Status::internal(format!("could not convert Arrow type {ty} to DuckDB type"))
+        }
+        Error::StatementChangedRows(count) => Status::internal(format!(
+            "statement expected to change one row, but changed {count} rows"
+        )),
+        Error::ToSqlConversionFailure(err) => {
+            Status::internal(format!("could not convert to SQL: {err}"))
+        }
+        Error::InvalidQuery => Status::internal("invalid query"),
+        Error::MultipleStatement => Status::internal("multiple statements"),
+        Error::InvalidParameterCount(given, expected) => Status::internal(format!(
+            "invalid parameter count: expected {expected} but got {given}"
+        )),
+        Error::AppendError => Status::internal("append error"),
         _ => Status::unknown("unknown error"),
-        // Error::NotFound => Status::not_found("not found"),
-        // Error::Corruption => Status::data_loss("data is corrupted"),
-        // Error::NotSupported => Status::unimplemented("operation not supported"),
-        // Error::InvalidArgument => Status::invalid_argument("invalid argument"),
-        // Error::IOError => Status::internal("I/O error"),
-        // Error::MergeInProgress => Status::aborted("merge in progress"),
-        // Error::Incomplete => Status::internal("incomplete operation"),
-        // Error::ShutdownInProgress => Status::unavailable("shutdown in progress"),
-        // Error::TimedOut => Status::deadline_exceeded("operation timed out"),
-        // Error::Aborted => Status::aborted("operation aborted"),
-        // Error::Busy => Status::unavailable("server is busy"),
-        // Error::Expired => Status::deadline_exceeded("operation expired"),
-        // Error::TryAgain => Status::unavailable("try again"),
-        // Error::CompactionTooLarge => Status::internal("compaction too large"),
-        // Error::ColumnFamilyDropped => Status::internal("column family dropped"),
-        // Error::Unknown => Status::unknown("unknown error"),
     };
     tonic_err.set_source(Arc::new(duckdb_err));
     tonic_err

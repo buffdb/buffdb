@@ -6,32 +6,27 @@ import 'common.proto';
 // Service definition for BLOB operations.
 service Blob {
   // Retrieves a BLOB by its ID.
-  rpc Get(BlobId) returns (BlobData);
+  rpc Get(stream BlobId) returns (stream BlobData);
 
   // Stores a new BLOB.
-  rpc Store(BlobData) returns (BlobId);
+  rpc Store(stream BlobData) returns (stream BlobId);
 
   // Updates an existing BLOB.
-  rpc Update(UpdateRequest) returns (BlobId);
+  rpc Update(stream UpdateRequest) returns (stream BlobId);
 
   // Deletes a BLOB by its ID.
-  rpc Delete(BlobId) returns (BlobId);
+  rpc Delete(stream BlobId) returns (stream BlobId);
 
   // Determine if all provided BLOB IDs have the same data.
-  rpc EqData(BlobIds) returns (common.Bool);
+  rpc EqData(stream BlobId) returns (common.Bool);
 
   // Determine if all provided BLOB IDs have different data.
-  rpc NotEqData(BlobIds) returns (common.Bool);
+  rpc NotEqData(stream BlobId) returns (common.Bool);
 }
 
 // A unique identifier for a BLOB.
 message BlobId {
   uint64 id = 1; // The ID of a BLOB.
-}
-
-// A list of unique identifiers for BLOBs.
-message BlobIds {
-  repeated uint64 ids = 1; // The IDs of BLOBs.
 }
 
 // A BLOB and its optional metadata.

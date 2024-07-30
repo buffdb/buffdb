@@ -2,17 +2,16 @@ mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
-use buffdb::blob::{BlobData, BlobId, BlobIds, BlobRpc, BlobServer, BlobStore, UpdateRequest};
+use buffdb::blob::{BlobData, BlobId, BlobServer, BlobStore, UpdateRequest};
 use buffdb::kv::{self, Key, KvServer, KvStore, Value};
 use buffdb::transitive;
 use clap::Parser as _;
-use futures::stream;
+use futures::{stream, StreamExt};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
-use tonic::IntoRequest as _;
 
 const SUCCESS: ExitCode = ExitCode::SUCCESS;
 const FAILURE: ExitCode = ExitCode::FAILURE;
@@ -119,24 +118,36 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
 }
 
 async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
-    let store = BlobStore::new(store);
+    let mut client = transitive::blob_client(store.clone()).await?;
     match command {
         cli::BlobCommand::Get { id, mode } => {
-            let blob = store.get(BlobId { id }.into_request()).await?.into_inner();
+            let blob: Vec<_> = client
+                .get(stream::iter([BlobId { id }]))
+                .await?
+                .into_inner()
+                .collect()
+                .await;
+
+            let (bytes, metadata) = match blob.as_slice() {
+                [Ok(BlobData { bytes, metadata })] => (bytes, metadata),
+                [Err(err)] => return Err(err.clone().into()),
+                _ => bail!("expected exactly one BlobId"),
+            };
+
             match mode {
-                cli::BlobGetMode::Data => io::stdout().write_all(&blob.bytes).await?,
+                cli::BlobGetMode::Data => io::stdout().write_all(bytes).await?,
                 cli::BlobGetMode::Metadata => {
-                    if let Some(metadata) = blob.metadata {
+                    if let Some(metadata) = metadata {
                         io::stdout().write_all(metadata.as_bytes()).await?
                     }
                 }
                 cli::BlobGetMode::All => {
                     let mut stdout = io::stdout();
-                    if let Some(metadata) = blob.metadata {
+                    if let Some(metadata) = metadata {
                         stdout.write_all(metadata.as_bytes()).await?;
                     }
                     stdout.write_all(&[0]).await?;
-                    stdout.write_all(&blob.bytes).await?;
+                    stdout.write_all(bytes).await?;
                 }
             }
         }
@@ -144,48 +155,45 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             file_path,
             metadata,
         } => {
-            let BlobId { id } = store
-                .store(
-                    BlobData {
-                        bytes: read_file_or_stdin(file_path).await?,
-                        metadata,
-                    }
-                    .into_request(),
-                )
+            let id: Vec<_> = client
+                .store(stream::iter([BlobData {
+                    bytes: read_file_or_stdin(file_path).await?,
+                    metadata,
+                }]))
                 .await?
-                .into_inner();
-            println!("{id}");
+                .into_inner()
+                .collect()
+                .await;
+            match id.as_slice() {
+                [Ok(BlobId { id })] => println!("{id}"),
+                [Err(err)] => return Err(err.clone().into()),
+                _ => bail!("expected exactly one BlobId"),
+            }
         }
         cli::BlobCommand::Update {
             id,
             mode: BlobUpdateMode::Data { file_path },
         } => {
-            store
-                .update(
-                    UpdateRequest {
-                        id,
-                        bytes: Some(read_file_or_stdin(file_path).await?),
-                        should_update_metadata: false,
-                        metadata: None,
-                    }
-                    .into_request(),
-                )
+            client
+                .update(stream::iter([UpdateRequest {
+                    id,
+                    bytes: Some(read_file_or_stdin(file_path).await?),
+                    should_update_metadata: false,
+                    metadata: None,
+                }]))
                 .await?;
         }
         cli::BlobCommand::Update {
             id,
             mode: BlobUpdateMode::Metadata { metadata },
         } => {
-            store
-                .update(
-                    UpdateRequest {
-                        id,
-                        bytes: None,
-                        should_update_metadata: true,
-                        metadata,
-                    }
-                    .into_request(),
-                )
+            client
+                .update(stream::iter([UpdateRequest {
+                    id,
+                    bytes: None,
+                    should_update_metadata: true,
+                    metadata,
+                }]))
                 .await?;
         }
         cli::BlobCommand::Update {
@@ -196,24 +204,21 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                     metadata,
                 },
         } => {
-            store
-                .update(
-                    UpdateRequest {
-                        id,
-                        bytes: Some(read_file_or_stdin(file_path).await?),
-                        should_update_metadata: true,
-                        metadata,
-                    }
-                    .into_request(),
-                )
+            client
+                .update(stream::iter([UpdateRequest {
+                    id,
+                    bytes: Some(read_file_or_stdin(file_path).await?),
+                    should_update_metadata: true,
+                    metadata,
+                }]))
                 .await?;
         }
         cli::BlobCommand::Delete { id } => {
-            store.delete(BlobId { id }.into_request()).await?;
+            client.delete(stream::iter([BlobId { id }])).await?;
         }
         cli::BlobCommand::EqData { ids } => {
-            let all_eq = store
-                .eq_data(BlobIds { ids }.into_request())
+            let all_eq = client
+                .eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
                 .await?
                 .into_inner()
                 .value;
@@ -222,8 +227,8 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             }
         }
         cli::BlobCommand::NotEqData { ids } => {
-            let all_neq = store
-                .not_eq_data(BlobIds { ids }.into_request())
+            let all_neq = client
+                .not_eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
                 .await?
                 .into_inner()
                 .value;

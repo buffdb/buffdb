@@ -22,7 +22,7 @@ binary = ["dep:anyhow", "dep:clap"]
 anyhow = { version = "1.0.86", optional = true }
 async-stream = "0.3.5"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
-duckdb = "1.0.0"
+duckdb = { version = "1.0.0", features = ["bundled"] }
 futures = "0.3.30"
 hyper-util = "0.1.6"
 prost = "0.13.1"
