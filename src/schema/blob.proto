@@ -9,36 +9,62 @@ service Blob {
   rpc Get(stream BlobId) returns (stream BlobData);
 
   // Stores a new BLOB.
+  //
+  // Returns the ID for validation.
   rpc Store(stream BlobData) returns (stream BlobId);
 
   // Updates an existing BLOB.
+  //
+  // If the request is for updating only one of the data or metadata, the other field is not
+  // changed.
+  //
+  // Returns the ID for validation.
   rpc Update(stream UpdateRequest) returns (stream BlobId);
 
-  // Deletes a BLOB by its ID.
+  // Delete a BLOB and its metadata by its ID.
+  //
+  // Returns the ID for validation.
   rpc Delete(stream BlobId) returns (stream BlobId);
 
-  // Determine if all provided BLOB IDs have the same data.
+  // Determine if all provided BLOB IDs have the same data. Metadata is ignored.
+  //
+  // As the IDs are streamed, the server returns `false` as soon as it finds two IDs with different
+  // data. If all IDs have the same data, the server returns `true` when the stream ends.
+  //
+  // Returns `false` if any ID is not found.
   rpc EqData(stream BlobId) returns (common.Bool);
 
   // Determine if all provided BLOB IDs have different data.
+  //
+  // As the IDs are streamed, the server returns `false` as soon as it finds two IDs with identical
+  // data. If all IDs have different data, the server returns `true` when the stream ends.
+  //
+  // Returns `false` if any ID is not found.
   rpc NotEqData(stream BlobId) returns (common.Bool);
 }
 
 // A unique identifier for a BLOB.
 message BlobId {
-  uint64 id = 1; // The ID of a BLOB.
+  // The ID of a BLOB.
+  uint64 id = 1;
 }
 
 // A BLOB and its optional metadata.
 message BlobData {
-  bytes bytes = 1; // The binary data of the BLOB.
-  optional string metadata = 2; // Optional metadata as a JSON string or similar.
+  // The binary data of the BLOB.
+  bytes bytes = 1;
+  // Optional metadata as a JSON string or similar.
+  optional string metadata = 2;
 }
 
 // Update message for updating a BLOB.
 message UpdateRequest {
-  uint64 id = 1; // The ID of the BLOB to update.
-  optional bytes bytes = 2; // The updated binary data of the BLOB.
-  bool should_update_metadata = 3; // Whether to update the metadata.
-  optional string metadata = 4; // The updated metadata of the BLOB. Ignored if should_update_metadata is false.
+  // The ID of the BLOB to update.
+  uint64 id = 1;
+  // The updated binary data of the BLOB.
+  optional bytes bytes = 2;
+  // Whether to update the metadata.
+  bool should_update_metadata = 3;
+  // The updated metadata of the BLOB. Ignored if should_update_metadata is false.
+  optional string metadata = 4;
 }

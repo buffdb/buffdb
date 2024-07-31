@@ -37,7 +37,7 @@ Run `cargo add buffdb tonic tokio futures` to add the necessary dependencies. Th
 the following code, which is placed in `src/main.rs`.
 
 ```rust
-use buffdb::kv::{Key, KeyValue};
+use buffdb::kv::{Key, KeyValue, Value};
 use tonic::{Request, IntoRequest};
 use futures::{stream, StreamExt as _};
 

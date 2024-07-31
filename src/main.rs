@@ -1,4 +1,8 @@
-#![allow(missing_docs, clippy::missing_docs_in_private_items)]
+//! A command-line interface for interacting with a stores provided by the BuffDB library.
+//!
+//! For usage, run `cargo run -- --help`.
+
+#![allow(clippy::missing_docs_in_private_items)]
 
 mod cli;
 

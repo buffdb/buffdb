@@ -1,3 +1,5 @@
+//! A store for binary large objects (BLOBs) with an optional metadata field.
+
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::helpers::{params2, params3};
 use crate::interop::duckdb_err_to_tonic_status;
@@ -13,6 +15,11 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use tonic::{Response, Status};
 
+/// A store for binary large objects (BLOBs) with an optional metadata field.
+///
+/// Metadata, if stored, is a string that can be used to store any additional information about the
+/// BLOB, such as a description or a name. Neither the BLOB or the metadata are required to be
+/// unique.
 #[must_use]
 #[derive(Debug)]
 pub struct BlobStore {
@@ -37,11 +44,15 @@ impl DbConnectionInfo for BlobStore {
 }
 
 impl BlobStore {
+    /// Create a new key-value store at the given location. If not pre-existing, the store will not
+    /// be initialized until the first connection is made.
     #[inline]
     pub const fn at_location(location: Location) -> Self {
         Self { location }
     }
 
+    /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
+    /// initialized until the first connection is made.
     #[inline]
     pub fn at_path<P>(path: P) -> Self
     where
@@ -52,6 +63,10 @@ impl BlobStore {
         }
     }
 
+    /// Create a new in-memory key-value store. This is useful for short-lived data.
+    ///
+    /// Note that all in-memory connections share the same stream, so any asynchronous calls have a
+    /// nondeterministic order. This is not a problem for on-disk connections.
     #[inline]
     pub const fn in_memory() -> Self {
         Self {

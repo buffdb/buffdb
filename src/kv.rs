@@ -1,3 +1,5 @@
+//! A key-value store.
+
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::interop::duckdb_err_to_tonic_status;
 use crate::schema::common::Bool;
@@ -12,6 +14,11 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use tonic::{Response, Status};
 
+/// A key-value store.
+///
+/// This is a key-value store where both the key and value are strings. There are no restrictions on
+/// the length or contents of either the key or value beyond restrictions implemented by the
+/// protobuf server.
 #[must_use]
 #[derive(Debug)]
 pub struct KvStore {
@@ -33,12 +40,15 @@ impl DbConnectionInfo for KvStore {
 }
 
 impl KvStore {
+    /// Create a new key-value store at the given location. If not pre-existing, the store will not
+    /// be initialized until the first connection is made.
     #[inline]
     pub const fn at_location(location: Location) -> Self {
         Self { location }
     }
 
-    /// Create a new key-value at the given path.
+    /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
+    /// initialized until the first connection is made.
     #[inline]
     pub fn at_path<P>(path: P) -> Self
     where
@@ -49,6 +59,10 @@ impl KvStore {
         }
     }
 
+    /// Create a new in-memory key-value store. This is useful for short-lived data.
+    ///
+    /// Note that all in-memory connections share the same stream, so any asynchronous calls have a
+    /// nondeterministic order. This is not a problem for on-disk connections.
     #[inline]
     pub const fn in_memory() -> Self {
         Self {
