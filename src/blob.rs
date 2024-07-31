@@ -86,7 +86,7 @@ impl BlobRpc for BlobStore {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
-        let stream = stream! {
+        let stream = stream!({
             while let Some(BlobId { id }) = stream.message().await? {
                 let (data, metadata) = db
                     .query_row(
@@ -105,7 +105,7 @@ impl BlobRpc for BlobStore {
                     metadata,
                 });
             }
-        };
+        });
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -113,7 +113,7 @@ impl BlobRpc for BlobStore {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
-        let stream = stream! {
+        let stream = stream!({
             while let Some(BlobData { bytes, metadata }) = stream.message().await? {
                 let id = db
                     .query_row(
@@ -124,7 +124,7 @@ impl BlobRpc for BlobStore {
                     .map_err(duckdb_err_to_tonic_status)?;
                 yield Ok(BlobId { id });
             }
-        };
+        });
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -135,7 +135,7 @@ impl BlobRpc for BlobStore {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
-        let stream = stream! {
+        let stream = stream!({
             while let Some(UpdateRequest {
                 id,
                 bytes,
@@ -166,20 +166,20 @@ impl BlobRpc for BlobStore {
                 }
                 yield Ok(BlobId { id });
             }
-        };
+        });
         Ok(Response::new(Box::pin(stream)))
     }
 
     async fn delete(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
-        let stream = stream! {
+        let stream = stream!({
             while let Some(BlobId { id }) = stream.message().await? {
                 db.execute("DELETE FROM blob WHERE id = ?", [id])
                     .map_err(duckdb_err_to_tonic_status)?;
                 yield Ok(BlobId { id });
             }
-        };
+        });
         Ok(Response::new(Box::pin(stream)))
     }
 

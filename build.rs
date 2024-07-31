@@ -9,6 +9,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "src/schema/blob.proto",
                 "src/schema/common.proto",
                 "src/schema/kv.proto",
+                "src/schema/google/protobuf/any.proto",
+                "src/schema/google/protobuf/wrappers.proto",
             ],
             &["src/schema"],
         )?;

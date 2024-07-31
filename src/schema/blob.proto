@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package blob;
+import 'google/protobuf/wrappers.proto';
 import 'common.proto';
 
 // Service definition for BLOB operations.

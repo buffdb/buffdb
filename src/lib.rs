@@ -42,13 +42,17 @@ pub mod schema {
     pub(crate) mod blob {
         tonic::include_proto!("blob");
     }
-    /// Types used across multiple services.
-    pub mod common {
+    pub(crate) mod common {
         tonic::include_proto!("common");
     }
     pub(crate) mod kv {
         tonic::include_proto!("kv");
     }
+    // pub(crate) mod google {
+    //     pub(crate) mod protobuf {
+    //         tonic::include_proto!("google.protobuf");
+    //     }
+    // }
 }
 
 pub use crate::db_connection::Location;

@@ -1,10 +1,17 @@
 syntax = "proto3";
 
 package kv;
+import 'google/protobuf/wrappers.proto';
 import 'common.proto';
 
 // The service definition for key-value operations.
 service Kv {
+  // Execute a query, returning the raw output.
+  rpc Query(stream RawQuery) returns (stream QueryResult);
+
+  // Execute a query, returning the number of rows changed, inserted, or deleted.
+  rpc Execute(stream RawQuery) returns (stream RowsChanged);
+
   // Get a value for a given key.
   rpc Get(stream Key) returns (stream Value);
 
@@ -35,6 +42,25 @@ service Kv {
   //
   // Returns `false` if any key is not found.
   rpc NotEq(stream Key) returns (common.Bool);
+}
+
+// A raw query.
+message RawQuery {
+  // The raw query to execute.
+  string query = 1;
+}
+
+// The result of a raw query.
+message QueryResult {
+  // The raw output of the operation.
+  // repeated google.protobuf.Any fields = 1;
+  repeated string fields = 1;
+}
+
+// The result of an execute operation.
+message RowsChanged {
+  // The number of rows changed, inserted, or deleted.
+  uint64 rows_changed = 1;
 }
 
 // The key half of a key-value pair.
