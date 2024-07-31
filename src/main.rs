@@ -2,8 +2,6 @@
 //!
 //! For usage, run `cargo run -- --help`.
 
-#![allow(clippy::missing_docs_in_private_items)]
-
 mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
@@ -19,9 +17,6 @@ use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
 
-const SUCCESS: ExitCode = ExitCode::SUCCESS;
-const FAILURE: ExitCode = ExitCode::FAILURE;
-
 fn main() -> Result<ExitCode> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -35,6 +30,16 @@ fn main() -> Result<ExitCode> {
         })
 }
 
+/// Run BuffDB as a server. This function will block until the server is shut down.
+///
+/// # Parameters
+///
+/// - `kv_store`: The location to store key-value pairs.
+/// - `blob_store`: The location to store BLOBs.
+/// - `addr`: The address to bind the server to.
+///
+/// `kv_store` and `blob_store` cannot be the same location. This is enforced at runtime to a
+/// reasonable extent.
 async fn run(
     RunArgs {
         kv_store,
@@ -72,9 +77,20 @@ async fn run(
         .serve(addr)
         .await?;
 
-    Ok(SUCCESS)
+    Ok(ExitCode::SUCCESS)
 }
 
+/// Perform operations on the key-value store.
+///
+/// # Parameters
+///
+/// - `store`: The location of the key-value store.
+/// - `command`: The command to execute.
+///
+/// # stdout
+///
+/// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
+/// by a null byte (`\0`).
 async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     let mut client = transitive::kv_client(store).await?;
     match command {
@@ -89,7 +105,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             if let Some(Value { value }) = first {
                 stdout.write_all(value.as_bytes()).await?;
             } else {
-                return Ok(FAILURE); // TODO enforce this via clap?
+                return Ok(ExitCode::FAILURE); // TODO enforce this via clap?
             }
             while let Some(Value { value }) = values.message().await? {
                 stdout.write_all(value.as_bytes()).await?;
@@ -108,7 +124,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             let all_eq = client.eq(stream::iter(keys)).await?.into_inner().value;
             drop(client);
             if !all_eq {
-                return Ok(FAILURE);
+                return Ok(ExitCode::FAILURE);
             }
         }
         cli::KvCommand::NotEq { keys } => {
@@ -116,14 +132,30 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner().value;
             drop(client);
             if !all_neq {
-                return Ok(FAILURE);
+                return Ok(ExitCode::FAILURE);
             }
         }
     }
 
-    Ok(SUCCESS)
+    Ok(ExitCode::SUCCESS)
 }
 
+/// Perform operations on the BLOB store.
+///
+/// # Parameters
+///
+/// - `store`: The location of the BLOB store.
+/// - `command`: The command to execute.
+///
+/// # stdout
+///
+/// When getting information for a BLOB, the data and/or metadata is written to stdout. If both are
+/// requested, the metadata (if any) is printed first, followed by a null byte (`\0`), followed by
+/// the data.
+///
+/// When storing a BLOB, the ID of the newly-created BLOB is written to stdout.
+///
+/// Nothing is written to stdout for other operations.
 async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
     let mut client = transitive::blob_client(store.clone()).await?;
     match command {
@@ -234,7 +266,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .value;
             drop(client);
             if !all_eq {
-                return Ok(FAILURE);
+                return Ok(ExitCode::FAILURE);
             }
         }
         cli::BlobCommand::NotEqData { ids } => {
@@ -245,13 +277,14 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .value;
             drop(client);
             if !all_neq {
-                return Ok(FAILURE);
+                return Ok(ExitCode::FAILURE);
             }
         }
     }
-    Ok(SUCCESS)
+    Ok(ExitCode::SUCCESS)
 }
 
+/// Given a path, read from stdin if the path is "-". Otherwise, read the file at that path.
 async fn read_file_or_stdin(file_path: PathBuf) -> io::Result<Vec<u8>> {
     if file_path == PathBuf::from("-") {
         let mut bytes = Vec::new();

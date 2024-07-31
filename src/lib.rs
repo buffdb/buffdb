@@ -5,10 +5,19 @@
 //!
 //! [DuckDB]: https://duckdb.org/
 //!
-//! # Usage as a library
+//! # Use as a library
 //!
 //! BuffDB is designed to be used as both a library and a binary. As a library, it provides
 //! everything needed to spawn a server and interact with a server.
+//!
+//! When using `buffdb`, you will likely want to add a number of dependencies to you project,
+//! including `tokio`, `tonic`, and `futures`.
+//!
+//! # Use as a binary
+//!
+//! To use BuffDB as a binary, you can install it using `cargo install buffdb`. This will install
+//! the `buffdb` binary, which can be used to start a server or interact with a server. For more
+//! information, see the help message for the binary.
 
 #![allow(clippy::missing_docs_in_private_items)]
 
@@ -20,6 +29,15 @@ pub mod kv;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
+// We have no control over the generated code, so silence a handful of lints.
+#[allow(
+    unused_qualifications,
+    unreachable_pub,
+    unused_results,
+    clippy::future_not_send,
+    clippy::missing_const_for_fn,
+    clippy::unwrap_used
+)]
 pub mod schema {
     pub(crate) mod blob {
         tonic::include_proto!("blob");
