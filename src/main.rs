@@ -1,3 +1,5 @@
+#![allow(missing_docs, clippy::missing_docs_in_private_items)]
+
 mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
@@ -74,7 +76,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     match command {
         cli::KvCommand::Get { keys } => {
             let mut values = client
-                .get(stream::iter(keys.into_iter().map(|key| kv::Key { key })))
+                .get(stream::iter(keys.into_iter().map(|key| Key { key })))
                 .await?
                 .into_inner();
 
@@ -90,16 +92,17 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             }
         }
         cli::KvCommand::Set { key, value } => {
-            client
+            let _response = client
                 .set(stream::iter([kv::KeyValue { key, value }]))
                 .await?;
         }
         cli::KvCommand::Delete { key } => {
-            client.delete(stream::iter([kv::Key { key }])).await?;
+            let _response = client.delete(stream::iter([Key { key }])).await?;
         }
         cli::KvCommand::Eq { keys } => {
             let keys = keys.into_iter().map(|key| Key { key });
             let all_eq = client.eq(stream::iter(keys)).await?.into_inner().value;
+            drop(client);
             if !all_eq {
                 return Ok(FAILURE);
             }
@@ -107,6 +110,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
         cli::KvCommand::NotEq { keys } => {
             let keys = keys.into_iter().map(|key| Key { key });
             let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner().value;
+            drop(client);
             if !all_neq {
                 return Ok(FAILURE);
             }
@@ -126,6 +130,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .into_inner()
                 .collect()
                 .await;
+            drop(client);
 
             let (bytes, metadata) = match blob.as_slice() {
                 [Ok(BlobData { bytes, metadata })] => (bytes, metadata),
@@ -163,7 +168,9 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .into_inner()
                 .collect()
                 .await;
+            drop(client);
             match id.as_slice() {
+                #[allow(clippy::print_stdout)]
                 [Ok(BlobId { id })] => println!("{id}"),
                 [Err(err)] => return Err(err.clone().into()),
                 _ => bail!("expected exactly one BlobId"),
@@ -173,7 +180,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             id,
             mode: BlobUpdateMode::Data { file_path },
         } => {
-            client
+            let _response = client
                 .update(stream::iter([UpdateRequest {
                     id,
                     bytes: Some(read_file_or_stdin(file_path).await?),
@@ -186,7 +193,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             id,
             mode: BlobUpdateMode::Metadata { metadata },
         } => {
-            client
+            let _response = client
                 .update(stream::iter([UpdateRequest {
                     id,
                     bytes: None,
@@ -203,7 +210,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                     metadata,
                 },
         } => {
-            client
+            let _response = client
                 .update(stream::iter([UpdateRequest {
                     id,
                     bytes: Some(read_file_or_stdin(file_path).await?),
@@ -213,7 +220,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .await?;
         }
         cli::BlobCommand::Delete { id } => {
-            client.delete(stream::iter([BlobId { id }])).await?;
+            let _response = client.delete(stream::iter([BlobId { id }])).await?;
         }
         cli::BlobCommand::EqData { ids } => {
             let all_eq = client
@@ -221,6 +228,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .await?
                 .into_inner()
                 .value;
+            drop(client);
             if !all_eq {
                 return Ok(FAILURE);
             }
@@ -231,6 +239,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .await?
                 .into_inner()
                 .value;
+            drop(client);
             if !all_neq {
                 return Ok(FAILURE);
             }
@@ -242,7 +251,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
 async fn read_file_or_stdin(file_path: PathBuf) -> io::Result<Vec<u8>> {
     if file_path == PathBuf::from("-") {
         let mut bytes = Vec::new();
-        io::stdin().read_to_end(&mut bytes).await?;
+        let _num_bytes = io::stdin().read_to_end(&mut bytes).await?;
         Ok(bytes)
     } else {
         Ok(fs::read(file_path).await?)

@@ -5,7 +5,7 @@ use tonic::Streaming;
 pub(crate) async fn assert_stream_eq<S, X>(mut stream: Streaming<S>, expected: X)
 where
     S: PartialEq<X::Item>,
-    X: IntoIterator<Item: Debug>,
+    X: IntoIterator<Item: Debug, IntoIter: Send> + Send,
 {
     let mut expected = expected.into_iter();
 
@@ -18,5 +18,5 @@ where
         }
     }
 
-    assert!(expected.next().is_none())
+    assert!(expected.next().is_none());
 }

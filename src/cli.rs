@@ -106,9 +106,9 @@ pub(crate) enum BlobGetMode {
 impl fmt::Display for BlobGetMode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str(match self {
-            BlobGetMode::Data => "data",
-            BlobGetMode::Metadata => "metadata",
-            BlobGetMode::All => "all",
+            Self::Data => "data",
+            Self::Metadata => "metadata",
+            Self::All => "all",
         })
     }
 }

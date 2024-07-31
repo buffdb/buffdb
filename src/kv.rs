@@ -12,6 +12,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use tonic::{Response, Status};
 
+#[must_use]
 #[derive(Debug)]
 pub struct KvStore {
     location: Location,
@@ -19,7 +20,7 @@ pub struct KvStore {
 
 impl DbConnectionInfo for KvStore {
     fn initialize(db: &Database) -> duckdb::Result<()> {
-        db.execute(
+        let _rows_changed = db.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
             [],
         )?;
@@ -33,7 +34,7 @@ impl DbConnectionInfo for KvStore {
 
 impl KvStore {
     #[inline]
-    pub fn at_location(location: Location) -> Self {
+    pub const fn at_location(location: Location) -> Self {
         Self { location }
     }
 
@@ -49,7 +50,7 @@ impl KvStore {
     }
 
     #[inline]
-    pub fn in_memory() -> Self {
+    pub const fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
         }
@@ -75,7 +76,7 @@ impl KvRpc for KvStore {
                 });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::GetStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn set(&self, request: StreamingRequest<KeyValue>) -> RpcResponse<Self::SetStream> {
@@ -88,7 +89,7 @@ impl KvRpc for KvStore {
                 yield Ok(Key { key });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::SetStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn delete(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::DeleteStream> {
@@ -101,7 +102,7 @@ impl KvRpc for KvStore {
                 yield Ok(Key { key });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::DeleteStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {

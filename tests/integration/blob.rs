@@ -45,6 +45,7 @@ async fn test_get() -> Result<()> {
         .get(stream::iter([BlobId { id }]))
         .await?
         .into_inner();
+    drop(client);
     assert_stream_eq(
         response,
         [BlobData {
@@ -75,6 +76,7 @@ async fn test_store() -> Result<()> {
         .get(stream::iter([BlobId { id }]))
         .await?
         .into_inner();
+    drop(client);
     assert_stream_eq(
         response,
         [BlobData {
@@ -116,6 +118,7 @@ async fn test_update_both() -> Result<()> {
         .get(stream::iter([BlobId { id }]))
         .await?
         .into_inner();
+    drop(client);
     assert_stream_eq(
         response,
         [BlobData {
@@ -154,6 +157,7 @@ async fn test_update_bytes() -> Result<()> {
     assert_stream_eq(stream, [BlobId { id }]).await;
 
     let response = client.get(stream::iter([BlobId { id }])).await?;
+    drop(client);
     assert_stream_eq(
         response.into_inner(),
         [BlobData {
@@ -192,6 +196,7 @@ async fn test_update_metadata() -> Result<()> {
     assert_stream_eq(stream, [BlobId { id }]).await;
 
     let response = client.get(stream::iter([BlobId { id }])).await?;
+    drop(client);
     assert_stream_eq(
         response.into_inner(),
         [BlobData {
@@ -228,6 +233,7 @@ async fn test_delete_with_metadata() -> Result<()> {
         .get(stream::iter([BlobId { id }]))
         .await?
         .into_inner();
+    drop(client);
     let msg = response.message().await;
     assert!(msg.is_err());
 
@@ -258,6 +264,7 @@ async fn test_delete_no_metadata() -> Result<()> {
         .get(stream::iter([BlobId { id }]))
         .await?
         .into_inner();
+    drop(client);
     let msg = response.message().await;
     assert!(msg.is_err());
 
@@ -304,6 +311,7 @@ async fn test_eq_data() -> Result<()> {
         .eq_data(stream::iter([BlobId { id }, BlobId { id: id3 }]))
         .await?
         .into_inner();
+    drop(client);
     assert!(!response.value);
 
     Ok(())
@@ -349,6 +357,7 @@ async fn test_not_eq_data() -> Result<()> {
         .not_eq_data(stream::iter([BlobId { id }, BlobId { id: id3 }]))
         .await?
         .into_inner();
+    drop(client);
     assert!(response.value);
 
     Ok(())
@@ -367,6 +376,7 @@ async fn test_eq_data_not_found() -> Result<()> {
             BlobId { id: u64::MAX - 3 },
         ]))
         .await;
+    drop(client);
     assert!(res.is_err());
     Ok(())
 }
@@ -384,6 +394,7 @@ async fn test_not_eq_data_not_found() -> Result<()> {
             BlobId { id: u64::MAX - 3 },
         ]))
         .await;
+    drop(client);
     assert!(res.is_err());
     Ok(())
 }

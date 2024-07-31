@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use tonic::{Response, Status};
 
+#[must_use]
 #[derive(Debug)]
 pub struct BlobStore {
     location: Location,
@@ -37,7 +38,7 @@ impl DbConnectionInfo for BlobStore {
 
 impl BlobStore {
     #[inline]
-    pub fn at_location(location: Location) -> Self {
+    pub const fn at_location(location: Location) -> Self {
         Self { location }
     }
 
@@ -52,7 +53,7 @@ impl BlobStore {
     }
 
     #[inline]
-    pub fn in_memory() -> Self {
+    pub const fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
         }
@@ -90,7 +91,7 @@ impl BlobRpc for BlobStore {
                 });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::GetStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn store(&self, request: StreamingRequest<BlobData>) -> RpcResponse<Self::StoreStream> {
@@ -109,7 +110,7 @@ impl BlobRpc for BlobStore {
                 yield Ok(BlobId { id });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::StoreStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn update(
@@ -151,7 +152,7 @@ impl BlobRpc for BlobStore {
                 yield Ok(BlobId { id });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::UpdateStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn delete(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::DeleteStream> {
@@ -164,7 +165,7 @@ impl BlobRpc for BlobStore {
                 yield Ok(BlobId { id });
             }
         };
-        Ok(Response::new(Box::pin(stream) as Self::DeleteStream))
+        Ok(Response::new(Box::pin(stream)))
     }
 
     async fn eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Bool> {

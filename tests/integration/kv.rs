@@ -16,7 +16,7 @@ static KV_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
 async fn test_get() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
-    client
+    let _response = client
         .set(stream::iter([KeyValue {
             key: "key_get".to_owned(),
             value: "value_get".to_owned(),
@@ -29,6 +29,7 @@ async fn test_get() -> Result<()> {
         }]))
         .await?
         .into_inner();
+    drop(client);
     assert_stream_eq(
         stream,
         [Value {
@@ -52,6 +53,7 @@ async fn test_set() -> Result<()> {
         }]))
         .await?
         .into_inner();
+    drop(client);
     assert_stream_eq(
         stream,
         [Key {
@@ -68,7 +70,7 @@ async fn test_set() -> Result<()> {
 async fn test_delete() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
-    client
+    let _response = client
         .set(stream::iter([KeyValue {
             key: "key_delete".to_owned(),
             value: "value_delete".to_owned(),
@@ -95,6 +97,7 @@ async fn test_delete() -> Result<()> {
         }]))
         .await?
         .into_inner();
+    drop(client);
     let next = response.next().await;
     assert!(matches!(next, Some(Err(_))));
 
@@ -107,7 +110,7 @@ async fn test_eq() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
     for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
-        client
+        let _response = client
             .set(stream::iter([KeyValue {
                 key: key.to_owned(),
                 value: "value_eq".to_owned(),
@@ -135,7 +138,7 @@ async fn test_eq() -> Result<()> {
         .value;
     assert!(all_eq);
 
-    client
+    let _response = client
         .set(stream::iter([KeyValue {
             key: "key_e_eq".to_owned(),
             value: "value2_eq".to_owned(),
@@ -163,6 +166,7 @@ async fn test_eq() -> Result<()> {
         .await?
         .into_inner()
         .value;
+    drop(client);
     assert!(!all_eq);
 
     Ok(())
@@ -177,7 +181,7 @@ async fn test_not_eq() -> Result<()> {
         .into_iter()
         .enumerate()
     {
-        client
+        let _response = client
             .set(stream::iter([KeyValue {
                 key: key.to_owned(),
                 value: format!("value{idx}_neq"),
@@ -205,7 +209,7 @@ async fn test_not_eq() -> Result<()> {
         .value;
     assert!(all_neq);
 
-    client
+    let _response = client
         .set(stream::iter([KeyValue {
             key: "key_e_neq".to_owned(),
             value: "value2_neq".to_owned(),
@@ -233,6 +237,7 @@ async fn test_not_eq() -> Result<()> {
         .await?
         .into_inner()
         .value;
+    drop(client);
     assert!(!all_neq);
 
     Ok(())
@@ -247,6 +252,7 @@ async fn test_eq_not_found() -> Result<()> {
             key: "this-key-should-not-exist".to_owned(),
         }]))
         .await;
+    drop(client);
     assert!(res.is_err());
     Ok(())
 }
@@ -260,6 +266,7 @@ async fn test_not_eq_not_found() -> Result<()> {
             key: "this-key-should-not-exist".to_owned(),
         }]))
         .await;
+    drop(client);
     assert!(res.is_err());
     Ok(())
 }

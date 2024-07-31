@@ -41,6 +41,6 @@ pub(crate) fn duckdb_err_to_tonic_status(duckdb_err: Error) -> Status {
         Error::AppendError => Status::internal("append error"),
         _ => Status::unknown("unknown error"),
     };
-    tonic_err.set_source(Arc::new(duckdb_err));
+    let _status = tonic_err.set_source(Arc::new(duckdb_err));
     tonic_err
 }

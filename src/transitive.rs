@@ -8,6 +8,7 @@ use tonic::transport::{Channel, Endpoint, Server};
 const DUPLEX_SIZE: usize = 1024;
 
 // TODO Add a way to shut down the server
+#[derive(Debug)]
 pub struct Transitive<T> {
     client: T,
 }
@@ -32,12 +33,12 @@ macro_rules! declare_clients {
             location: L,
         ) -> Result<Transitive<$client<Channel>>, tonic::transport::Error>
         where
-            L: Into<Location>,
+            L: Into<Location> + Send,
         {
             let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
-            tokio::spawn(async move {
+            let _join_handle = tokio::spawn(async move {
                 Server::builder()
                     .add_service($server::new($store::at_location(location)))
                     .serve_with_incoming(

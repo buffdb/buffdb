@@ -13,7 +13,7 @@ pub enum Location {
 
 impl From<PathBuf> for Location {
     fn from(path: PathBuf) -> Self {
-        Location::OnDisk { path }
+        Self::OnDisk { path }
     }
 }
 

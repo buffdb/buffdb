@@ -32,8 +32,8 @@ where
 {
     fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
         match self {
-            PairToSql::A(a) => a.to_sql(),
-            PairToSql::B(b) => b.to_sql(),
+            Self::A(a) => a.to_sql(),
+            Self::B(b) => b.to_sql(),
         }
     }
 }
@@ -52,9 +52,9 @@ where
 {
     fn to_sql(&self) -> Result<ToSqlOutput<'_>> {
         match self {
-            TripleToSql::A(a) => a.to_sql(),
-            TripleToSql::B(b) => b.to_sql(),
-            TripleToSql::C(c) => c.to_sql(),
+            Self::A(a) => a.to_sql(),
+            Self::B(b) => b.to_sql(),
+            Self::C(c) => c.to_sql(),
         }
     }
 }
