@@ -82,25 +82,47 @@ impl KvRpc for KvStore {
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
-        let stream = stream!({
-            while let Some(RawQuery { query }) = stream.message().await? {
-                let mut statement = db.prepare(&query).map_err(duckdb_err_to_tonic_status)?;
-                let mut rows = statement.query([]).map_err(duckdb_err_to_tonic_status)?;
 
-                while let Ok(Some(row)) = rows.next() {
-                    let column_count = row.as_ref().column_count();
-                    let mut values = Vec::with_capacity(column_count);
-                    for i in 0..column_count {
-                        // TODO convert this to google.protobuf.Any
-                        values.push(
-                            row.get::<_, u64>(i)
-                                .map_err(duckdb_err_to_tonic_status)?
-                                .to_string(),
-                        );
-                    }
-                    yield Ok(QueryResult { fields: values });
+        // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
+        // with `drop(statement);` can be used.`
+        let (tx, rx) = crossbeam::channel::bounded(64);
+
+        while let Some(RawQuery { query }) = stream.message().await? {
+            let mut statement = match db.prepare(&query) {
+                Ok(statement) => statement,
+                Err(err) => {
+                    let _res = tx.send(Err(err));
+                    break;
                 }
-                drop(statement);
+            };
+            match statement.query([]) {
+                Ok(mut rows) => {
+                    while let Ok(Some(row)) = rows.next() {
+                        let column_count = row.as_ref().column_count();
+                        let mut values = Vec::with_capacity(column_count);
+                        for i in 0..column_count {
+                            // TODO convert this to google.protobuf.Any
+                            match row.get::<_, String>(i) {
+                                Ok(value) => values.push(value),
+                                Err(err) => {
+                                    let _res = tx.send(Err(err));
+                                    break;
+                                }
+                            }
+                        }
+                        let _res = tx.send(Ok(QueryResult { fields: values }));
+                    }
+                }
+                Err(err) => {
+                    let _res = tx.send(Err(err));
+                    break;
+                }
+            };
+        }
+
+        let stream = stream!({
+            while let Ok(result) = rx.recv() {
+                yield result.map_err(duckdb_err_to_tonic_status);
             }
         });
         Ok(Response::new(Box::pin(stream)))
@@ -112,15 +134,24 @@ impl KvRpc for KvStore {
     ) -> RpcResponse<Self::ExecuteStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+
+        // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
+        // with `drop(statement);` can be used.`
+        let (tx, rx) = crossbeam::channel::bounded(64);
+
+        while let Some(RawQuery { query }) = stream.message().await? {
+            let mut statement = db.prepare(&query).map_err(duckdb_err_to_tonic_status)?;
+            let rows_changed = statement.execute([]).map_err(duckdb_err_to_tonic_status)?;
+            let _res = tx.send(Ok(RowsChanged {
+                rows_changed: rows_changed
+                    .try_into()
+                    .expect("more than 10^19 rows altered"),
+            }));
+        }
+
         let stream = stream!({
-            while let Some(RawQuery { query }) = stream.message().await? {
-                let mut statement = db.prepare(&query).map_err(duckdb_err_to_tonic_status)?;
-                let rows_changed = statement.execute([]).map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(RowsChanged {
-                    rows_changed: rows_changed
-                        .try_into()
-                        .expect("more than 10^19 rows altered"),
-                });
+            while let Ok(result) = rx.recv() {
+                yield result.map_err(duckdb_err_to_tonic_status);
             }
         });
         Ok(Response::new(Box::pin(stream)))

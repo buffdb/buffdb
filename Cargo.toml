@@ -26,6 +26,7 @@ binary = ["dep:anyhow", "dep:clap"]
 anyhow = { version = "1.0.86", optional = true }
 async-stream = "0.3.5"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
+crossbeam = "0.8.4"
 duckdb = { version = "1.0.0", features = ["bundled"] }
 futures = "0.3.30"
 hyper-util = "0.1.6"
