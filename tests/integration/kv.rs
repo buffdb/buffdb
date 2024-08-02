@@ -1,6 +1,6 @@
 use crate::helpers::assert_stream_eq;
 use anyhow::Result;
-use buffdb::kv::{Key, KeyValue, Value};
+use buffdb::kv::{Key, KeyValue, QueryResult, RawQuery, RowsChanged, Value};
 use buffdb::transitive::kv_client;
 use buffdb::Location;
 use futures::{stream, StreamExt as _};
@@ -10,6 +10,61 @@ use std::sync::LazyLock;
 static KV_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
     path: "kv_store.test.db".into(),
 });
+
+#[tokio::test]
+#[serial]
+async fn test_query() -> Result<()> {
+    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+
+    let _response = client
+        .set(stream::iter([KeyValue {
+            key: "key_raw_query".to_owned(),
+            value: "value_raw_query".to_owned(),
+        }]))
+        .await;
+
+    let mut response = client
+        .query(stream::iter([RawQuery {
+            query: "SELECT COUNT(*) FROM kv".to_owned(),
+        }]))
+        .await?
+        .into_inner();
+    drop(client);
+
+    let QueryResult { fields } = response
+        .next()
+        .await
+        .expect("one result should be present")?;
+    assert_eq!(fields.len(), 1);
+    assert_ne!(fields[0], "0");
+
+    assert!(response.next().await.is_none());
+
+    Ok(())
+}
+
+#[tokio::test]
+#[serial]
+async fn test_execute() -> Result<()> {
+    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+
+    let response = client
+        .execute(stream::iter([RawQuery {
+            query: "CREATE SEQUENCE IF NOT EXISTS kv_pointless_sequence START 1".to_owned(),
+        }]))
+        .await?;
+    drop(client);
+
+    let mut response = response.into_inner();
+    assert!(matches!(
+        response.next().await,
+        Some(Ok(RowsChanged { rows_changed: 0 }))
+    ));
+
+    assert!(response.next().await.is_none());
+
+    Ok(())
+}
 
 #[tokio::test]
 #[serial]

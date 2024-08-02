@@ -1,12 +1,13 @@
 //! A store for binary large objects (BLOBs) with an optional metadata field.
 
 use crate::db_connection::{Database, DbConnectionInfo};
-use crate::helpers::{params2, params3};
+use crate::helpers::{duckdb_value_to_string, params2, params3};
 use crate::interop::duckdb_err_to_tonic_status;
 pub use crate::schema::blob::blob_client::BlobClient;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
-pub use crate::schema::blob::{BlobData, BlobId, UpdateRequest};
-use crate::schema::blob::{QueryResult, RawQuery, RowsChanged};
+pub use crate::schema::blob::{
+    BlobData, BlobId, QueryResult, RawQuery, RowsChanged, UpdateRequest,
+};
 use crate::schema::common::Bool;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
@@ -108,8 +109,8 @@ impl BlobRpc for BlobStore {
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
                             // TODO convert this to google.protobuf.Any
-                            match row.get::<_, String>(i) {
-                                Ok(value) => values.push(value),
+                            match row.get::<_, duckdb::types::Value>(i) {
+                                Ok(value) => values.push(duckdb_value_to_string(value)),
                                 Err(err) => {
                                     let _res = tx.send(Err(err));
                                     break;

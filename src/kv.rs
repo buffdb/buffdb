@@ -1,6 +1,7 @@
 //! A key-value store.
 
 use crate::db_connection::{Database, DbConnectionInfo};
+use crate::helpers::duckdb_value_to_string;
 use crate::interop::duckdb_err_to_tonic_status;
 use crate::schema::common::Bool;
 pub use crate::schema::kv::kv_client::KvClient;
@@ -102,8 +103,8 @@ impl KvRpc for KvStore {
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
                             // TODO convert this to google.protobuf.Any
-                            match row.get::<_, String>(i) {
-                                Ok(value) => values.push(value),
+                            match row.get::<_, duckdb::types::Value>(i) {
+                                Ok(value) => values.push(duckdb_value_to_string(value)),
                                 Err(err) => {
                                     let _res = tx.send(Err(err));
                                     break;
