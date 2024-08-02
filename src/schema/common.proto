@@ -1,9 +1,0 @@
-syntax = "proto3";
-
-package common;
-
-// A boolean value.
-message Bool {
-  // `true` or `false`
-  bool value = 1;
-}

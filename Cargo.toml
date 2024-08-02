@@ -31,6 +31,7 @@ duckdb = { version = "1.0.0", features = ["bundled"] }
 futures = "0.3.30"
 hyper-util = "0.1.6"
 prost = "0.13.1"
+prost-types = "0.13.1"
 sha2 = "0.10.8"
 tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tokio-stream = "0.1.15"

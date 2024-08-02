@@ -1,9 +1,8 @@
 //! A key-value store.
 
+use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
-use crate::helpers::duckdb_value_to_string;
 use crate::interop::duckdb_err_to_tonic_status;
-use crate::schema::common::Bool;
 pub use crate::schema::kv::kv_client::KvClient;
 pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
 pub use crate::schema::kv::{Key, KeyValue, QueryResult, RawQuery, RowsChanged, Value};
@@ -102,9 +101,8 @@ impl KvRpc for KvStore {
                         let column_count = row.as_ref().column_count();
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
-                            // TODO convert this to google.protobuf.Any
                             match row.get::<_, duckdb::types::Value>(i) {
-                                Ok(value) => values.push(duckdb_value_to_string(value)),
+                                Ok(value) => values.push(duckdb_value_to_protobuf_any(value)?),
                                 Err(err) => {
                                     let _res = tx.send(Err(err));
                                     break;
@@ -206,14 +204,14 @@ impl KvRpc for KvStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
+    async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<bool> {
         let mut values = self.get(request).await?.into_inner();
 
         let value = match values.next().await {
             Some(Ok(Value { value })) => value,
             Some(Err(err)) => return Err(err),
             // If there are no keys, then all values are by definition equal.
-            None => return Ok(Response::new(Bool { value: true })),
+            None => return Ok(Response::new(true)),
         };
         // Hash the values to avoid storing it fully in memory.
         let first_hash = Sha256::digest(value);
@@ -222,14 +220,14 @@ impl KvRpc for KvStore {
             let Value { value } = value?;
 
             if first_hash != Sha256::digest(value) {
-                return Ok(Response::new(Bool { value: false }));
+                return Ok(Response::new(false));
             }
         }
 
-        Ok(Response::new(Bool { value: true }))
+        Ok(Response::new(true))
     }
 
-    async fn not_eq(&self, request: StreamingRequest<Key>) -> RpcResponse<Bool> {
+    async fn not_eq(&self, request: StreamingRequest<Key>) -> RpcResponse<bool> {
         let mut unique_values = BTreeSet::new();
 
         let mut values = self.get(request).await?.into_inner();
@@ -239,10 +237,10 @@ impl KvRpc for KvStore {
             // `insert` returns false if the value already exists.
             // Hash the values to avoid storing it fully in memory.
             if !unique_values.insert(Sha256::digest(value)) {
-                return Ok(Response::new(Bool { value: false }));
+                return Ok(Response::new(false));
             }
         }
 
-        Ok(Response::new(Bool { value: true }))
+        Ok(Response::new(true))
     }
 }

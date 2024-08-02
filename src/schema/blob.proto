@@ -1,8 +1,8 @@
 syntax = "proto3";
 
 package blob;
+import 'google/protobuf/any.proto';
 import 'google/protobuf/wrappers.proto';
-import 'common.proto';
 
 // Service definition for BLOB operations.
 service Blob {
@@ -39,7 +39,7 @@ service Blob {
   // data. If all IDs have the same data, the server returns `true` when the stream ends.
   //
   // Returns `false` if any ID is not found.
-  rpc EqData(stream BlobId) returns (common.Bool);
+  rpc EqData(stream BlobId) returns (google.protobuf.BoolValue);
 
   // Determine if all provided BLOB IDs have different data.
   //
@@ -47,7 +47,7 @@ service Blob {
   // data. If all IDs have different data, the server returns `true` when the stream ends.
   //
   // Returns `false` if any ID is not found.
-  rpc NotEqData(stream BlobId) returns (common.Bool);
+  rpc NotEqData(stream BlobId) returns (google.protobuf.BoolValue);
 }
 
 // A raw query.
@@ -59,8 +59,7 @@ message RawQuery {
 // The result of a raw query.
 message QueryResult {
   // The raw output of the operation.
-  // repeated google.protobuf.Any fields = 1;
-  repeated string fields = 1;
+  repeated google.protobuf.Any fields = 1;
 }
 
 // The result of an execute operation.

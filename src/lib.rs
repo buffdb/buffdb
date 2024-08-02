@@ -22,8 +22,9 @@
 #![allow(clippy::missing_docs_in_private_items)]
 
 pub mod blob;
+mod conv;
 mod db_connection;
-mod helpers;
+mod duckdb_helper;
 mod interop;
 pub mod kv;
 pub mod transitive;
@@ -42,17 +43,9 @@ pub mod schema {
     pub(crate) mod blob {
         tonic::include_proto!("blob");
     }
-    pub(crate) mod common {
-        tonic::include_proto!("common");
-    }
     pub(crate) mod kv {
         tonic::include_proto!("kv");
     }
-    // pub(crate) mod google {
-    //     pub(crate) mod protobuf {
-    //         tonic::include_proto!("google.protobuf");
-    //     }
-    // }
 }
 
 pub use crate::db_connection::Location;

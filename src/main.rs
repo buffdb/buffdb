@@ -121,7 +121,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
         }
         cli::KvCommand::Eq { keys } => {
             let keys = keys.into_iter().map(|key| Key { key });
-            let all_eq = client.eq(stream::iter(keys)).await?.into_inner().value;
+            let all_eq = client.eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_eq {
                 return Ok(ExitCode::FAILURE);
@@ -129,7 +129,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
         }
         cli::KvCommand::NotEq { keys } => {
             let keys = keys.into_iter().map(|key| Key { key });
-            let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner().value;
+            let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_neq {
                 return Ok(ExitCode::FAILURE);
@@ -262,8 +262,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             let all_eq = client
                 .eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
                 .await?
-                .into_inner()
-                .value;
+                .into_inner();
             drop(client);
             if !all_eq {
                 return Ok(ExitCode::FAILURE);
@@ -273,8 +272,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             let all_neq = client
                 .not_eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
                 .await?
-                .into_inner()
-                .value;
+                .into_inner();
             drop(client);
             if !all_neq {
                 return Ok(ExitCode::FAILURE);

@@ -1,8 +1,8 @@
 syntax = "proto3";
 
 package kv;
+import 'google/protobuf/any.proto';
 import 'google/protobuf/wrappers.proto';
-import 'common.proto';
 
 // The service definition for key-value operations.
 service Kv {
@@ -32,7 +32,7 @@ service Kv {
   // ends.
   //
   // Returns `false` if any key is not found.
-  rpc Eq(stream Key) returns (common.Bool);
+  rpc Eq(stream Key) returns (google.protobuf.BoolValue);
 
   // Determine if all provided keys have different values.
   //
@@ -41,7 +41,7 @@ service Kv {
   // ends.
   //
   // Returns `false` if any key is not found.
-  rpc NotEq(stream Key) returns (common.Bool);
+  rpc NotEq(stream Key) returns (google.protobuf.BoolValue);
 }
 
 // A raw query.
@@ -53,8 +53,7 @@ message RawQuery {
 // The result of a raw query.
 message QueryResult {
   // The raw output of the operation.
-  // repeated google.protobuf.Any fields = 1;
-  repeated string fields = 1;
+  repeated google.protobuf.Any fields = 1;
 }
 
 // The result of an execute operation.

@@ -1,14 +1,14 @@
 //! A store for binary large objects (BLOBs) with an optional metadata field.
 
+use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
-use crate::helpers::{duckdb_value_to_string, params2, params3};
+use crate::duckdb_helper::{params2, params3};
 use crate::interop::duckdb_err_to_tonic_status;
 pub use crate::schema::blob::blob_client::BlobClient;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{
     BlobData, BlobId, QueryResult, RawQuery, RowsChanged, UpdateRequest,
 };
-use crate::schema::common::Bool;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use futures::StreamExt;
@@ -108,9 +108,8 @@ impl BlobRpc for BlobStore {
                         let column_count = row.as_ref().column_count();
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
-                            // TODO convert this to google.protobuf.Any
                             match row.get::<_, duckdb::types::Value>(i) {
-                                Ok(value) => values.push(duckdb_value_to_string(value)),
+                                Ok(value) => values.push(duckdb_value_to_protobuf_any(value)?),
                                 Err(err) => {
                                     let _res = tx.send(Err(err));
                                     break;
@@ -265,14 +264,14 @@ impl BlobRpc for BlobStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Bool> {
+    async fn eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<bool> {
         let mut values = self.get(request).await?.into_inner();
 
         let value = match values.next().await {
             Some(Ok(BlobData { bytes, .. })) => bytes,
             Some(Err(err)) => return Err(err),
             // If there are no keys, then all values are by definition equal.
-            None => return Ok(Response::new(Bool { value: true })),
+            None => return Ok(Response::new(true)),
         };
         // Hash the values to avoid storing it fully in memory.
         let first_hash = Sha256::digest(&value);
@@ -281,14 +280,14 @@ impl BlobRpc for BlobStore {
             let BlobData { bytes, .. } = value?;
 
             if first_hash != Sha256::digest(&bytes) {
-                return Ok(Response::new(Bool { value: false }));
+                return Ok(Response::new(false));
             }
         }
 
-        Ok(Response::new(Bool { value: true }))
+        Ok(Response::new(true))
     }
 
-    async fn not_eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Bool> {
+    async fn not_eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<bool> {
         let mut unique_values = BTreeSet::new();
 
         let mut values = self.get(request).await?.into_inner();
@@ -298,10 +297,10 @@ impl BlobRpc for BlobStore {
             // `insert` returns false if the value already exists.
             // Hash the values to avoid storing it fully in memory.
             if !unique_values.insert(Sha256::digest(&bytes)) {
-                return Ok(Response::new(Bool { value: false }));
+                return Ok(Response::new(false));
             }
         }
 
-        Ok(Response::new(Bool { value: true }))
+        Ok(Response::new(true))
     }
 }
