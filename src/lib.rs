@@ -21,12 +21,12 @@
 
 #![allow(clippy::missing_docs_in_private_items)]
 
-pub mod blob;
+mod blob;
 mod conv;
 mod db_connection;
 mod duckdb_helper;
 mod interop;
-pub mod kv;
+mod kv;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
@@ -39,17 +39,81 @@ pub mod transitive;
     clippy::missing_const_for_fn,
     clippy::unwrap_used
 )]
-pub mod schema {
-    pub(crate) mod blob {
-        tonic::include_proto!("blob");
+mod bindings {
+    pub(crate) mod buffdb {
+        pub(crate) mod blob {
+            tonic::include_proto!("buffdb.blob");
+        }
+        pub(crate) mod kv {
+            tonic::include_proto!("buffdb.kv");
+        }
+        pub(crate) mod query {
+            tonic::include_proto!("buffdb.query");
+        }
     }
-    pub(crate) mod kv {
-        tonic::include_proto!("kv");
+}
+
+/// Protobuf types used by BuffDB.
+pub mod proto {
+    /// Protobuf types needed to interact with the BLOB store.
+    pub mod blob {
+        pub use crate::bindings::buffdb::blob::{BlobData, BlobId, UpdateRequest};
     }
+    /// Protobuf types needed to interact with the KV store.
+    pub mod kv {
+        pub use crate::bindings::buffdb::kv::{Key, KeyValue, Value};
+    }
+    /// Protobuf types needed to send raw queries to a given store.
+    pub mod query {
+        pub use crate::bindings::buffdb::query::{QueryResult, RawQuery, RowsChanged};
+    }
+}
+
+/// gRPC server definitions.
+pub mod server {
+    /// gRPC server for the BLOB store.
+    pub mod blob {
+        pub use crate::bindings::buffdb::blob::blob_server::BlobServer;
+    }
+    /// gRPC server for the KV store.
+    pub mod kv {
+        pub use crate::bindings::buffdb::kv::kv_server::KvServer;
+    }
+}
+
+/// gRPC client definitions.
+pub mod client {
+    /// gRPC client for the BLOB store.
+    pub mod blob {
+        pub use crate::bindings::buffdb::blob::blob_client::BlobClient;
+    }
+    /// gRPC client for the KV store.
+    pub mod kv {
+        pub use crate::bindings::buffdb::kv::kv_client::KvClient;
+    }
+}
+
+/// gRPC service definitions.
+pub mod service {
+    /// gRPC service for the BLOB store.
+    pub mod blob {
+        pub use crate::bindings::buffdb::blob::blob_server::Blob as BlobRpc;
+    }
+    /// gRPC service for the KV store.
+    pub mod kv {
+        pub use crate::bindings::buffdb::kv::kv_server::Kv as KvRpc;
+    }
+}
+
+/// Store implementations.
+pub mod store {
+    pub use crate::blob::BlobStore;
+    pub use crate::kv::KvStore;
 }
 
 pub use crate::db_connection::Location;
 use futures::Stream;
+pub use prost_types;
 use std::pin::Pin;
 
 /// A response from a gRPC server.

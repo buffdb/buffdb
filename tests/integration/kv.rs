@@ -1,6 +1,7 @@
 use crate::helpers::assert_stream_eq;
 use anyhow::Result;
-use buffdb::kv::{Key, KeyValue, QueryResult, RawQuery, RowsChanged, Value};
+use buffdb::proto::kv::{Key, KeyValue, Value};
+use buffdb::proto::query::{QueryResult, RawQuery, RowsChanged};
 use buffdb::transitive::kv_client;
 use buffdb::Location;
 use futures::{stream, StreamExt as _};

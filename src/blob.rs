@@ -4,11 +4,9 @@ use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::duckdb_helper::{params2, params3};
 use crate::interop::duckdb_err_to_tonic_status;
-pub use crate::schema::blob::blob_client::BlobClient;
-pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
-pub use crate::schema::blob::{
-    BlobData, BlobId, QueryResult, RawQuery, RowsChanged, UpdateRequest,
-};
+use crate::proto::blob::{BlobData, BlobId, UpdateRequest};
+use crate::proto::query::{QueryResult, RawQuery, RowsChanged};
+use crate::service::blob::BlobRpc;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use futures::StreamExt;

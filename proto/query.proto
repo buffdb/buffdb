@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package buffdb.query;
+import 'google/protobuf/any.proto';
+
+// A raw query.
+message RawQuery {
+  // The raw query to execute.
+  string query = 1;
+}
+
+// The result of a raw query.
+message QueryResult {
+  // The raw output of the operation.
+  repeated google.protobuf.Any fields = 1;
+}
+
+// The result of an execute operation.
+message RowsChanged {
+  // The number of rows changed, inserted, or deleted.
+  uint64 rows_changed = 1;
+}

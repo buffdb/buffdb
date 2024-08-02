@@ -4,15 +4,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional") // hyperium/tonic#1331
         .build_server(true)
-        // .compile_well_known_types(true)
         .compile(
             &[
-                "src/schema/blob.proto",
-                "src/schema/kv.proto",
-                "src/schema/google/protobuf/any.proto",
-                "src/schema/google/protobuf/wrappers.proto",
+                "proto/blob.proto",
+                "proto/kv.proto",
+                "proto/query.proto",
+                "proto/google/protobuf/any.proto",
+                "proto/google/protobuf/wrappers.proto",
             ],
-            &["src/schema"],
+            &["proto"],
         )?;
     Ok(())
 }

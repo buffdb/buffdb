@@ -6,8 +6,11 @@ mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
-use buffdb::blob::{BlobData, BlobId, BlobServer, BlobStore, UpdateRequest};
-use buffdb::kv::{self, Key, KvServer, KvStore, Value};
+use buffdb::proto::blob::{BlobData, BlobId, UpdateRequest};
+use buffdb::server::blob::BlobServer;
+use buffdb::proto::kv::{Key, KeyValue, Value};
+use buffdb::server::kv::KvServer;
+use buffdb::store::{BlobStore, KvStore};
 use buffdb::transitive;
 use clap::Parser as _;
 use futures::{stream, StreamExt};
@@ -112,9 +115,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             }
         }
         cli::KvCommand::Set { key, value } => {
-            let _response = client
-                .set(stream::iter([kv::KeyValue { key, value }]))
-                .await?;
+            let _response = client.set(stream::iter([KeyValue { key, value }])).await?;
         }
         cli::KvCommand::Delete { key } => {
             let _response = client.delete(stream::iter([Key { key }])).await?;

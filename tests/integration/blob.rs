@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
-use buffdb::blob::{
-    BlobClient, BlobData, BlobId, QueryResult, RawQuery, RowsChanged, UpdateRequest,
-};
+use buffdb::client::blob::BlobClient;
+use buffdb::proto::blob::{BlobData, BlobId, UpdateRequest};
+use buffdb::proto::query::{QueryResult, RawQuery, RowsChanged};
 use buffdb::transitive::blob_client;
 use buffdb::Location;
 use futures::{stream, StreamExt as _};

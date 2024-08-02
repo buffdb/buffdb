@@ -1,7 +1,10 @@
 //! A temporary client for a data store.
 
-use crate::blob::{BlobClient, BlobServer, BlobStore};
-use crate::kv::{KvClient, KvServer, KvStore};
+use crate::client::blob::BlobClient;
+use crate::client::kv::KvClient;
+use crate::server::blob::BlobServer;
+use crate::server::kv::KvServer;
+use crate::store::{BlobStore, KvStore};
 use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::ops::{Deref, DerefMut};

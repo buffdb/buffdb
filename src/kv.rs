@@ -3,9 +3,9 @@
 use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::interop::duckdb_err_to_tonic_status;
-pub use crate::schema::kv::kv_client::KvClient;
-pub use crate::schema::kv::kv_server::{Kv as KvRpc, KvServer};
-pub use crate::schema::kv::{Key, KeyValue, QueryResult, RawQuery, RowsChanged, Value};
+use crate::proto::kv::{Key, KeyValue, Value};
+use crate::proto::query::{QueryResult, RawQuery, RowsChanged};
+use crate::service::kv::KvRpc;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use futures::StreamExt;
