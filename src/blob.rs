@@ -6,6 +6,7 @@ use crate::interop::duckdb_err_to_tonic_status;
 pub use crate::schema::blob::blob_client::BlobClient;
 pub use crate::schema::blob::blob_server::{Blob as BlobRpc, BlobServer};
 pub use crate::schema::blob::{BlobData, BlobId, UpdateRequest};
+use crate::schema::blob::{QueryResult, RawQuery, RowsChanged};
 use crate::schema::common::Bool;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
@@ -77,10 +78,90 @@ impl BlobStore {
 
 #[tonic::async_trait]
 impl BlobRpc for BlobStore {
+    type QueryStream = DynStream<Result<QueryResult, Status>>;
+    type ExecuteStream = DynStream<Result<RowsChanged, Status>>;
     type GetStream = DynStream<Result<BlobData, Status>>;
     type StoreStream = DynStream<Result<BlobId, Status>>;
     type UpdateStream = DynStream<Result<BlobId, Status>>;
     type DeleteStream = DynStream<Result<BlobId, Status>>;
+
+    async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+
+        // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
+        // with `drop(statement);` can be used.`
+        let (tx, rx) = crossbeam::channel::bounded(64);
+
+        while let Some(RawQuery { query }) = stream.message().await? {
+            let mut statement = match db.prepare(&query) {
+                Ok(statement) => statement,
+                Err(err) => {
+                    let _res = tx.send(Err(err));
+                    break;
+                }
+            };
+            match statement.query([]) {
+                Ok(mut rows) => {
+                    while let Ok(Some(row)) = rows.next() {
+                        let column_count = row.as_ref().column_count();
+                        let mut values = Vec::with_capacity(column_count);
+                        for i in 0..column_count {
+                            // TODO convert this to google.protobuf.Any
+                            match row.get::<_, String>(i) {
+                                Ok(value) => values.push(value),
+                                Err(err) => {
+                                    let _res = tx.send(Err(err));
+                                    break;
+                                }
+                            }
+                        }
+                        let _res = tx.send(Ok(QueryResult { fields: values }));
+                    }
+                }
+                Err(err) => {
+                    let _res = tx.send(Err(err));
+                    break;
+                }
+            };
+        }
+
+        let stream = stream!({
+            while let Ok(result) = rx.recv() {
+                yield result.map_err(duckdb_err_to_tonic_status);
+            }
+        });
+        Ok(Response::new(Box::pin(stream)))
+    }
+
+    async fn execute(
+        &self,
+        request: StreamingRequest<RawQuery>,
+    ) -> RpcResponse<Self::ExecuteStream> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+
+        // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
+        // with `drop(statement);` can be used.`
+        let (tx, rx) = crossbeam::channel::bounded(64);
+
+        while let Some(RawQuery { query }) = stream.message().await? {
+            let mut statement = db.prepare(&query).map_err(duckdb_err_to_tonic_status)?;
+            let rows_changed = statement.execute([]).map_err(duckdb_err_to_tonic_status)?;
+            let _res = tx.send(Ok(RowsChanged {
+                rows_changed: rows_changed
+                    .try_into()
+                    .expect("more than 10^19 rows altered"),
+            }));
+        }
+
+        let stream = stream!({
+            while let Ok(result) = rx.recv() {
+                yield result.map_err(duckdb_err_to_tonic_status);
+            }
+        });
+        Ok(Response::new(Box::pin(stream)))
+    }
 
     async fn get(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
