@@ -105,13 +105,13 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
                 .into_inner();
 
             let mut stdout = io::stdout();
-            let first = values.message().await?;
-            if let Some(kv::GetResponse { value }) = first {
-                stdout.write_all(value.as_bytes()).await?;
-            } else {
-                return Ok(ExitCode::FAILURE); // TODO enforce this via clap?
-            }
+            let kv::GetResponse { value } = values
+                .message()
+                .await?
+                .expect("at least one value is required; should be enforced by clap");
+            stdout.write_all(value.as_bytes()).await?;
             while let Some(kv::GetResponse { value }) = values.message().await? {
+                stdout.write_all(&[0]).await?;
                 stdout.write_all(value.as_bytes()).await?;
             }
         }

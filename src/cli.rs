@@ -60,6 +60,7 @@ pub(crate) enum KvCommand {
     #[clap(alias = "fetch")]
     Get {
         /// The key(s) to get the value(s) for.
+        #[clap(required = true)]
         keys: Vec<String>,
     },
     /// Set a value for a given key.
@@ -87,6 +88,7 @@ pub(crate) enum KvCommand {
     #[clap(aliases = ["equal", "equals"])]
     Eq {
         /// The key(s) to compare.
+        #[clap(required = true)]
         keys: Vec<String>,
     },
     /// Determine if all provided keys have different values.
@@ -96,6 +98,7 @@ pub(crate) enum KvCommand {
     #[clap(aliases = ["unique", "ne", "neq"])]
     NotEq {
         /// The key(s) to compare.
+        #[clap(required = true)]
         keys: Vec<String>,
     },
 }
@@ -154,11 +157,13 @@ pub(crate) enum BlobCommand {
     /// Determine if all provided IDs have the same data.
     EqData {
         /// The ID(s) to compare.
+        #[clap(required = true)]
         ids: Vec<u64>,
     },
     /// Determine if all provided IDs have different data.
     NotEqData {
         /// The ID(s) to compare.
+        #[clap(required = true)]
         ids: Vec<u64>,
     },
 }
