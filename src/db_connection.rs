@@ -27,7 +27,13 @@ where
 }
 
 pub(crate) trait DbConnectionInfo {
-    fn initialize(db: &Database) -> duckdb::Result<()>;
+    fn initialize(&self, db: &Database) -> duckdb::Result<()>;
+
+    /// Returns `true` if the database is known to have been initialized. May return `false` even if
+    /// it is initialized.
+    fn was_initialized(&self) -> bool {
+        false
+    }
 
     fn location(&self) -> &Location;
 
@@ -38,9 +44,9 @@ pub(crate) trait DbConnectionInfo {
             Location::OnDisk { path } => Connection::open(path),
         }?;
 
-        // TODO Wrap this in a boolean to indicate whether this has already been run. This avoids
-        // running this every time a connection is opened.
-        Self::initialize(&conn)?;
+        if !self.was_initialized() {
+            self.initialize(&conn)?;
+        }
         Ok(conn)
     }
 }

@@ -16,6 +16,7 @@ use futures::StreamExt;
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tonic::{Response, Status};
 
 /// A store for binary large objects (BLOBs) with an optional metadata field.
@@ -27,10 +28,11 @@ use tonic::{Response, Status};
 #[derive(Debug)]
 pub struct BlobStore {
     location: Location,
+    initialized: AtomicBool,
 }
 
 impl DbConnectionInfo for BlobStore {
-    fn initialize(db: &Database) -> duckdb::Result<()> {
+    fn initialize(&self, db: &Database) -> duckdb::Result<()> {
         db.execute_batch(
             "CREATE SEQUENCE IF NOT EXISTS blob_id_seq START 1;
             CREATE TABLE IF NOT EXISTS blob(
@@ -38,7 +40,13 @@ impl DbConnectionInfo for BlobStore {
                 data BLOB,
                 metadata TEXT
             );",
-        )
+        )?;
+        self.initialized.store(true, Ordering::Relaxed);
+        Ok(())
+    }
+
+    fn was_initialized(&self) -> bool {
+        self.initialized.load(Ordering::Relaxed)
     }
 
     fn location(&self) -> &Location {
@@ -51,7 +59,10 @@ impl BlobStore {
     /// be initialized until the first connection is made.
     #[inline]
     pub const fn at_location(location: Location) -> Self {
-        Self { location }
+        Self {
+            location,
+            initialized: AtomicBool::new(false),
+        }
     }
 
     /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
@@ -63,6 +74,7 @@ impl BlobStore {
     {
         Self {
             location: Location::OnDisk { path: path.into() },
+            initialized: AtomicBool::new(false),
         }
     }
 
@@ -74,6 +86,7 @@ impl BlobStore {
     pub const fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
+            initialized: AtomicBool::new(false),
         }
     }
 }

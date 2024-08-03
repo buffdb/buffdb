@@ -15,6 +15,7 @@ use futures::StreamExt;
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tonic::{Response, Status};
 
 /// A key-value store.
@@ -26,15 +27,21 @@ use tonic::{Response, Status};
 #[derive(Debug)]
 pub struct KvStore {
     location: Location,
+    initialized: AtomicBool,
 }
 
 impl DbConnectionInfo for KvStore {
-    fn initialize(db: &Database) -> duckdb::Result<()> {
+    fn initialize(&self, db: &Database) -> duckdb::Result<()> {
         let _rows_changed = db.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
             [],
         )?;
+        self.initialized.store(true, Ordering::Relaxed);
         Ok(())
+    }
+
+    fn was_initialized(&self) -> bool {
+        self.initialized.load(Ordering::Relaxed)
     }
 
     fn location(&self) -> &Location {
@@ -47,7 +54,10 @@ impl KvStore {
     /// be initialized until the first connection is made.
     #[inline]
     pub const fn at_location(location: Location) -> Self {
-        Self { location }
+        Self {
+            location,
+            initialized: AtomicBool::new(false),
+        }
     }
 
     /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
@@ -59,6 +69,7 @@ impl KvStore {
     {
         Self {
             location: Location::OnDisk { path: path.into() },
+            initialized: AtomicBool::new(false),
         }
     }
 
@@ -70,6 +81,7 @@ impl KvStore {
     pub const fn in_memory() -> Self {
         Self {
             location: Location::InMemory,
+            initialized: AtomicBool::new(false),
         }
     }
 }
