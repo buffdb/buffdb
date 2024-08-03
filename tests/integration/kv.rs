@@ -1,6 +1,9 @@
 use crate::helpers::assert_stream_eq;
 use anyhow::Result;
-use buffdb::proto::kv::{Key, KeyValue, Value};
+use buffdb::proto::kv::{
+    DeleteRequest, DeleteResponse, EqRequest, GetRequest, GetResponse, NotEqRequest, SetRequest,
+    SetResponse,
+};
 use buffdb::proto::query::{QueryResult, RawQuery, RowsChanged};
 use buffdb::transitive::kv_client;
 use buffdb::Location;
@@ -18,7 +21,7 @@ async fn test_query() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
     let _response = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_raw_query".to_owned(),
             value: "value_raw_query".to_owned(),
         }]))
@@ -73,14 +76,14 @@ async fn test_get() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
     let _response = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_get".to_owned(),
             value: "value_get".to_owned(),
         }]))
         .await?;
 
     let stream = client
-        .get(stream::iter([Key {
+        .get(stream::iter([GetRequest {
             key: "key_get".to_owned(),
         }]))
         .await?
@@ -88,7 +91,7 @@ async fn test_get() -> Result<()> {
     drop(client);
     assert_stream_eq(
         stream,
-        [Value {
+        [GetResponse {
             value: "value_get".to_owned(),
         }],
     )
@@ -103,7 +106,7 @@ async fn test_set() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
     let stream = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_set".to_owned(),
             value: "value_set".to_owned(),
         }]))
@@ -112,7 +115,7 @@ async fn test_set() -> Result<()> {
     drop(client);
     assert_stream_eq(
         stream,
-        [Key {
+        [SetResponse {
             key: "key_set".to_owned(),
         }],
     )
@@ -127,28 +130,28 @@ async fn test_delete() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
 
     let _response = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_delete".to_owned(),
             value: "value_delete".to_owned(),
         }]))
         .await?;
 
     let stream = client
-        .delete(stream::iter([Key {
+        .delete(stream::iter([DeleteRequest {
             key: "key_delete".to_owned(),
         }]))
         .await?
         .into_inner();
     assert_stream_eq(
         stream,
-        [Key {
+        [DeleteResponse {
             key: "key_delete".to_owned(),
         }],
     )
     .await;
 
     let mut response = client
-        .get(stream::iter([Key {
+        .get(stream::iter([GetRequest {
             key: "key_delete".to_owned(),
         }]))
         .await?
@@ -167,7 +170,7 @@ async fn test_eq() -> Result<()> {
 
     for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
         let _response = client
-            .set(stream::iter([KeyValue {
+            .set(stream::iter([SetRequest {
                 key: key.to_owned(),
                 value: "value_eq".to_owned(),
             }]))
@@ -176,16 +179,16 @@ async fn test_eq() -> Result<()> {
 
     let all_eq = client
         .eq(stream::iter([
-            Key {
+            EqRequest {
                 key: "key_a_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_b_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_c_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_d_eq".to_owned(),
             },
         ]))
@@ -194,7 +197,7 @@ async fn test_eq() -> Result<()> {
     assert!(all_eq);
 
     let _response = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_e_eq".to_owned(),
             value: "value2_eq".to_owned(),
         }]))
@@ -202,19 +205,19 @@ async fn test_eq() -> Result<()> {
 
     let all_eq = client
         .eq(stream::iter([
-            Key {
+            EqRequest {
                 key: "key_a_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_b_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_c_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_d_eq".to_owned(),
             },
-            Key {
+            EqRequest {
                 key: "key_e_eq".to_owned(),
             },
         ]))
@@ -236,7 +239,7 @@ async fn test_not_eq() -> Result<()> {
         .enumerate()
     {
         let _response = client
-            .set(stream::iter([KeyValue {
+            .set(stream::iter([SetRequest {
                 key: key.to_owned(),
                 value: format!("value{idx}_neq"),
             }]))
@@ -245,16 +248,16 @@ async fn test_not_eq() -> Result<()> {
 
     let all_neq = client
         .not_eq(stream::iter([
-            Key {
+            NotEqRequest {
                 key: "key_a_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_b_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_c_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_d_neq".to_owned(),
             },
         ]))
@@ -263,7 +266,7 @@ async fn test_not_eq() -> Result<()> {
     assert!(all_neq);
 
     let _response = client
-        .set(stream::iter([KeyValue {
+        .set(stream::iter([SetRequest {
             key: "key_e_neq".to_owned(),
             value: "value2_neq".to_owned(),
         }]))
@@ -271,19 +274,19 @@ async fn test_not_eq() -> Result<()> {
 
     let all_neq = client
         .not_eq(stream::iter([
-            Key {
+            NotEqRequest {
                 key: "key_a_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_b_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_c_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_d_neq".to_owned(),
             },
-            Key {
+            NotEqRequest {
                 key: "key_e_neq".to_owned(),
             },
         ]))
@@ -300,7 +303,7 @@ async fn test_not_eq() -> Result<()> {
 async fn test_eq_not_found() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
     let res = client
-        .eq(stream::iter([Key {
+        .eq(stream::iter([EqRequest {
             key: "this-key-should-not-exist".to_owned(),
         }]))
         .await;
@@ -314,7 +317,7 @@ async fn test_eq_not_found() -> Result<()> {
 async fn test_not_eq_not_found() -> Result<()> {
     let mut client = kv_client(KV_STORE_LOC.clone()).await?;
     let res = client
-        .not_eq(stream::iter([Key {
+        .not_eq(stream::iter([NotEqRequest {
             key: "this-key-should-not-exist".to_owned(),
         }]))
         .await;

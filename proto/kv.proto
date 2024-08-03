@@ -14,17 +14,17 @@ service Kv {
   rpc Execute(stream buffdb.query.RawQuery) returns (stream buffdb.query.RowsChanged);
 
   // Get a value for a given key.
-  rpc Get(stream Key) returns (stream Value);
+  rpc Get(stream GetRequest) returns (stream GetResponse);
 
   // Set a value for a given key. If the key already exists, the value is updated.
   //
   // Returns the key for validation.
-  rpc Set(stream KeyValue) returns (stream Key);
+  rpc Set(stream SetRequest) returns (stream SetResponse);
 
   // Delete a value for a given key.
   //
   // Returns the key for validation.
-  rpc Delete(stream Key) returns (stream Key);
+  rpc Delete(stream DeleteRequest) returns (stream DeleteResponse);
 
   // Determine if all provided keys have the same value.
   //
@@ -33,7 +33,7 @@ service Kv {
   // ends.
   //
   // Returns `false` if any key is not found.
-  rpc Eq(stream Key) returns (google.protobuf.BoolValue);
+  rpc Eq(stream EqRequest) returns (google.protobuf.BoolValue);
 
   // Determine if all provided keys have different values.
   //
@@ -42,25 +42,55 @@ service Kv {
   // ends.
   //
   // Returns `false` if any key is not found.
-  rpc NotEq(stream Key) returns (google.protobuf.BoolValue);
+  rpc NotEq(stream NotEqRequest) returns (google.protobuf.BoolValue);
 }
 
-// The key half of a key-value pair.
-message Key {
-  // The key half of the pair. Used as an index in the database. Keys are unique.
+// A request to get a value for a given key.
+message GetRequest {
+  // The key half of a key-value pair.
   string key = 1;
 }
 
-// The value half of a key-value pair.
-message Value {
-  // The value half of the pair, associated with a specific key. Values are not necessarily unique.
+// A response containing a value for a given key.
+message GetResponse {
+  // The value half of a key-value pair.
   string value = 1;
 }
 
-// A key-value pair.
-message KeyValue {
-  // The key half of the pair. Used as an index in the database. Keys are unique.
+// A request to set a value for a given key. Updates the value if the key already exists.
+message SetRequest {
+  // The key half of a key-value pair.
   string key = 1;
   // The value half of the pair, associated with a specific key. Values are not necessarily unique.
   string value = 2;
+}
+
+// A response containing the key for a given key-value pair.
+message SetResponse {
+  // The key half of a key-value pair.
+  string key = 1;
+}
+
+// A request to delete a value for a given key.
+message DeleteRequest {
+  // The key half of a key-value pair.
+  string key = 1;
+}
+
+// A response containing the key for a given key-value pair.
+message DeleteResponse {
+  // The key half of a key-value pair.
+  string key = 1;
+}
+
+// A request to determine if all provided keys have the same value.
+message EqRequest {
+  // The key half of a key-value pair.
+  string key = 1;
+}
+
+// A request to determine if all provided keys have unique values.
+message NotEqRequest {
+  // The key half of a key-value pair.
+  string key = 1;
 }

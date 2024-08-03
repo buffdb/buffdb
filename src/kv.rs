@@ -3,7 +3,10 @@
 use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::interop::duckdb_err_to_tonic_status;
-use crate::proto::kv::{Key, KeyValue, Value};
+use crate::proto::kv::{
+    DeleteRequest, DeleteResponse, EqRequest, GetRequest, GetResponse, NotEqRequest, SetRequest,
+    SetResponse,
+};
 use crate::proto::query::{QueryResult, RawQuery, RowsChanged};
 use crate::service::kv::KvRpc;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
@@ -75,9 +78,9 @@ impl KvStore {
 impl KvRpc for KvStore {
     type QueryStream = DynStream<Result<QueryResult, Status>>;
     type ExecuteStream = DynStream<Result<RowsChanged, Status>>;
-    type GetStream = DynStream<Result<Value, Status>>;
-    type SetStream = DynStream<Result<Key, Status>>;
-    type DeleteStream = DynStream<Result<Key, Status>>;
+    type GetStream = DynStream<Result<GetResponse, Status>>;
+    type SetStream = DynStream<Result<SetResponse, Status>>;
+    type DeleteStream = DynStream<Result<DeleteResponse, Status>>;
 
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         let mut stream = request.into_inner();
@@ -156,17 +159,17 @@ impl KvRpc for KvStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn get(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::GetStream> {
+    async fn get(&self, request: StreamingRequest<GetRequest>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream!({
-            while let Some(Key { key }) = stream.message().await? {
+            while let Some(GetRequest { key }) = stream.message().await? {
                 let value = db
                     .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
                         row.get(0)
                     })
                     .map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(Value {
+                yield Ok(GetResponse {
                     value: String::from_utf8(value)
                         .expect("protobuf requires strings be valid UTF-8"),
                 });
@@ -175,40 +178,56 @@ impl KvRpc for KvStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn set(&self, request: StreamingRequest<KeyValue>) -> RpcResponse<Self::SetStream> {
+    async fn set(&self, request: StreamingRequest<SetRequest>) -> RpcResponse<Self::SetStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream!({
-            while let Some(KeyValue { key, value }) = stream.message().await? {
+            while let Some(SetRequest { key, value }) = stream.message().await? {
                 db.execute(
                     "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)",
                     [&key, &value],
                 )
                 .map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(Key { key });
+                yield Ok(SetResponse { key });
             }
         });
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn delete(&self, request: StreamingRequest<Key>) -> RpcResponse<Self::DeleteStream> {
+    async fn delete(
+        &self,
+        request: StreamingRequest<DeleteRequest>,
+    ) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream!({
-            while let Some(Key { key }) = stream.message().await? {
+            while let Some(DeleteRequest { key }) = stream.message().await? {
                 db.execute("DELETE FROM kv WHERE key = ?", [&key])
                     .map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(Key { key });
+                yield Ok(DeleteResponse { key });
             }
         });
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn eq(&self, request: StreamingRequest<Key>) -> RpcResponse<bool> {
-        let mut values = self.get(request).await?.into_inner();
+    async fn eq(&self, request: StreamingRequest<EqRequest>) -> RpcResponse<bool> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+        let mut stream = Box::pin(stream!({
+            while let Some(EqRequest { key }) = stream.message().await? {
+                let value = db
+                    .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                        row.get(0)
+                    })
+                    .map_err(duckdb_err_to_tonic_status)?;
+                yield Ok(
+                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8")
+                );
+            }
+        }));
 
-        let value = match values.next().await {
-            Some(Ok(Value { value })) => value,
+        let value = match stream.next().await {
+            Some(Ok(value)) => value,
             Some(Err(err)) => return Err(err),
             // If there are no keys, then all values are by definition equal.
             None => return Ok(Response::new(true)),
@@ -216,8 +235,8 @@ impl KvRpc for KvStore {
         // Hash the values to avoid storing it fully in memory.
         let first_hash = Sha256::digest(value);
 
-        while let Some(value) = values.next().await {
-            let Value { value } = value?;
+        while let Some(value) = stream.next().await {
+            let value = value?;
 
             if first_hash != Sha256::digest(value) {
                 return Ok(Response::new(false));
@@ -227,16 +246,28 @@ impl KvRpc for KvStore {
         Ok(Response::new(true))
     }
 
-    async fn not_eq(&self, request: StreamingRequest<Key>) -> RpcResponse<bool> {
+    async fn not_eq(&self, request: StreamingRequest<NotEqRequest>) -> RpcResponse<bool> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+        let mut stream = Box::pin(stream!({
+            while let Some(NotEqRequest { key }) = stream.message().await? {
+                let value = db
+                    .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                        row.get(0)
+                    })
+                    .map_err(duckdb_err_to_tonic_status)?;
+                yield Ok::<_, Status>(
+                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
+                );
+            }
+        }));
+
         let mut unique_values = BTreeSet::new();
 
-        let mut values = self.get(request).await?.into_inner();
-        while let Some(value) = values.next().await {
-            let Value { value } = value?;
-
+        while let Some(value) = stream.next().await {
             // `insert` returns false if the value already exists.
             // Hash the values to avoid storing it fully in memory.
-            if !unique_values.insert(Sha256::digest(value)) {
+            if !unique_values.insert(Sha256::digest(value?)) {
                 return Ok(Response::new(false));
             }
         }

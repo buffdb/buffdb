@@ -14,12 +14,12 @@ service Blob {
   rpc Execute(stream buffdb.query.RawQuery) returns (stream buffdb.query.RowsChanged);
 
   // Retrieves a BLOB by its ID.
-  rpc Get(stream BlobId) returns (stream BlobData);
+  rpc Get(stream GetRequest) returns (stream GetResponse);
 
   // Stores a new BLOB.
   //
   // Returns the ID for validation.
-  rpc Store(stream BlobData) returns (stream BlobId);
+  rpc Store(stream StoreRequest) returns (stream StoreResponse);
 
   // Updates an existing BLOB.
   //
@@ -27,12 +27,12 @@ service Blob {
   // changed.
   //
   // Returns the ID for validation.
-  rpc Update(stream UpdateRequest) returns (stream BlobId);
+  rpc Update(stream UpdateRequest) returns (stream UpdateResponse);
 
   // Delete a BLOB and its metadata by its ID.
   //
   // Returns the ID for validation.
-  rpc Delete(stream BlobId) returns (stream BlobId);
+  rpc Delete(stream DeleteRequest) returns (stream DeleteResponse);
 
   // Determine if all provided BLOB IDs have the same data. Metadata is ignored.
   //
@@ -40,7 +40,7 @@ service Blob {
   // data. If all IDs have the same data, the server returns `true` when the stream ends.
   //
   // Returns `false` if any ID is not found.
-  rpc EqData(stream BlobId) returns (google.protobuf.BoolValue);
+  rpc EqData(stream EqDataRequest) returns (google.protobuf.BoolValue);
 
   // Determine if all provided BLOB IDs have different data.
   //
@@ -48,24 +48,38 @@ service Blob {
   // data. If all IDs have different data, the server returns `true` when the stream ends.
   //
   // Returns `false` if any ID is not found.
-  rpc NotEqData(stream BlobId) returns (google.protobuf.BoolValue);
+  rpc NotEqData(stream NotEqDataRequest) returns (google.protobuf.BoolValue);
 }
 
-// A unique identifier for a BLOB.
-message BlobId {
-  // The ID of a BLOB.
+// Request the data and metadata of a BLOB.
+message GetRequest {
+  // The ID of the BLOB to retrieve.
   uint64 id = 1;
 }
 
-// A BLOB and its optional metadata.
-message BlobData {
+// Response containing the data and metadata of a BLOB.
+message GetResponse {
   // The binary data of the BLOB.
   bytes bytes = 1;
-  // Optional metadata as a JSON string or similar.
+  // The metadata of the BLOB.
   optional string metadata = 2;
 }
 
-// Update message for updating a BLOB.
+// Request to store a new BLOB.
+message StoreRequest {
+  // The binary data of the BLOB.
+  bytes bytes = 1;
+  // The metadata of the BLOB.
+  optional string metadata = 2;
+}
+
+// Response containing the ID of the stored BLOB.
+message StoreResponse {
+  // The ID of the stored BLOB.
+  uint64 id = 1;
+}
+
+// Request to update an existing BLOB.
 message UpdateRequest {
   // The ID of the BLOB to update.
   uint64 id = 1;
@@ -75,4 +89,34 @@ message UpdateRequest {
   bool should_update_metadata = 3;
   // The updated metadata of the BLOB. Ignored if should_update_metadata is false.
   optional string metadata = 4;
+}
+
+// Response containing the ID of the updated BLOB.
+message UpdateResponse {
+  // The ID of the updated BLOB.
+  uint64 id = 1;
+}
+
+// Request to delete a BLOB.
+message DeleteRequest {
+  // The ID of the BLOB to delete.
+  uint64 id = 1;
+}
+
+// Response containing the ID of the deleted BLOB.
+message DeleteResponse {
+  // The ID of the deleted BLOB.
+  uint64 id = 1;
+}
+
+// Request to determine if all provided BLOB IDs have the same data.
+message EqDataRequest {
+  // The ID of the BLOB to compare.
+  uint64 id = 1;
+}
+
+// Request to determine if all provided BLOB IDs have unique data.
+message NotEqDataRequest {
+  // The ID of the BLOB to compare.
+  uint64 id = 1;
 }

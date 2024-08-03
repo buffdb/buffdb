@@ -4,7 +4,10 @@ use crate::conv::duckdb_value_to_protobuf_any;
 use crate::db_connection::{Database, DbConnectionInfo};
 use crate::duckdb_helper::{params2, params3};
 use crate::interop::duckdb_err_to_tonic_status;
-use crate::proto::blob::{BlobData, BlobId, UpdateRequest};
+use crate::proto::blob::{
+    DeleteRequest, DeleteResponse, EqDataRequest, GetRequest, GetResponse, NotEqDataRequest,
+    StoreRequest, StoreResponse, UpdateRequest, UpdateResponse,
+};
 use crate::proto::query::{QueryResult, RawQuery, RowsChanged};
 use crate::service::blob::BlobRpc;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
@@ -79,10 +82,10 @@ impl BlobStore {
 impl BlobRpc for BlobStore {
     type QueryStream = DynStream<Result<QueryResult, Status>>;
     type ExecuteStream = DynStream<Result<RowsChanged, Status>>;
-    type GetStream = DynStream<Result<BlobData, Status>>;
-    type StoreStream = DynStream<Result<BlobId, Status>>;
-    type UpdateStream = DynStream<Result<BlobId, Status>>;
-    type DeleteStream = DynStream<Result<BlobId, Status>>;
+    type GetStream = DynStream<Result<GetResponse, Status>>;
+    type StoreStream = DynStream<Result<StoreResponse, Status>>;
+    type UpdateStream = DynStream<Result<UpdateResponse, Status>>;
+    type DeleteStream = DynStream<Result<DeleteResponse, Status>>;
 
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         let mut stream = request.into_inner();
@@ -161,12 +164,12 @@ impl BlobRpc for BlobStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn get(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::GetStream> {
+    async fn get(&self, request: StreamingRequest<GetRequest>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
         let stream = stream!({
-            while let Some(BlobId { id }) = stream.message().await? {
+            while let Some(GetRequest { id }) = stream.message().await? {
                 let (data, metadata) = db
                     .query_row(
                         "SELECT data, metadata FROM blob WHERE id = ?",
@@ -179,7 +182,7 @@ impl BlobRpc for BlobStore {
                     )
                     .map_err(duckdb_err_to_tonic_status)?;
 
-                yield Ok(BlobData {
+                yield Ok(GetResponse {
                     bytes: data,
                     metadata,
                 });
@@ -188,12 +191,15 @@ impl BlobRpc for BlobStore {
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn store(&self, request: StreamingRequest<BlobData>) -> RpcResponse<Self::StoreStream> {
+    async fn store(
+        &self,
+        request: StreamingRequest<StoreRequest>,
+    ) -> RpcResponse<Self::StoreStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
         let stream = stream!({
-            while let Some(BlobData { bytes, metadata }) = stream.message().await? {
+            while let Some(StoreRequest { bytes, metadata }) = stream.message().await? {
                 let id = db
                     .query_row(
                         "INSERT INTO blob(data, metadata) VALUES(?, ?) RETURNING id",
@@ -201,7 +207,7 @@ impl BlobRpc for BlobStore {
                         |row| row.get(0),
                     )
                     .map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(BlobId { id });
+                yield Ok(StoreResponse { id });
             }
         });
         Ok(Response::new(Box::pin(stream)))
@@ -243,30 +249,46 @@ impl BlobRpc for BlobStore {
                             .map_err(duckdb_err_to_tonic_status)?;
                     }
                 }
-                yield Ok(BlobId { id });
+                yield Ok(UpdateResponse { id });
             }
         });
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn delete(&self, request: StreamingRequest<BlobId>) -> RpcResponse<Self::DeleteStream> {
+    async fn delete(
+        &self,
+        request: StreamingRequest<DeleteRequest>,
+    ) -> RpcResponse<Self::DeleteStream> {
         let mut stream = request.into_inner();
         let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
         let stream = stream!({
-            while let Some(BlobId { id }) = stream.message().await? {
+            while let Some(DeleteRequest { id }) = stream.message().await? {
                 db.execute("DELETE FROM blob WHERE id = ?", [id])
                     .map_err(duckdb_err_to_tonic_status)?;
-                yield Ok(BlobId { id });
+                yield Ok(DeleteResponse { id });
             }
         });
         Ok(Response::new(Box::pin(stream)))
     }
 
-    async fn eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<bool> {
-        let mut values = self.get(request).await?.into_inner();
+    async fn eq_data(&self, request: StreamingRequest<EqDataRequest>) -> RpcResponse<bool> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
 
-        let value = match values.next().await {
-            Some(Ok(BlobData { bytes, .. })) => bytes,
+        let mut stream = Box::pin(stream!({
+            while let Some(EqDataRequest { id }) = stream.message().await? {
+                let data = db
+                    .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
+                        row.get::<_, Vec<u8>>(0)
+                    })
+                    .map_err(duckdb_err_to_tonic_status)?;
+
+                yield Ok(data);
+            }
+        }));
+
+        let value = match stream.next().await {
+            Some(Ok(bytes)) => bytes,
             Some(Err(err)) => return Err(err),
             // If there are no keys, then all values are by definition equal.
             None => return Ok(Response::new(true)),
@@ -274,10 +296,8 @@ impl BlobRpc for BlobStore {
         // Hash the values to avoid storing it fully in memory.
         let first_hash = Sha256::digest(&value);
 
-        while let Some(value) = values.next().await {
-            let BlobData { bytes, .. } = value?;
-
-            if first_hash != Sha256::digest(&bytes) {
+        while let Some(value) = stream.next().await {
+            if first_hash != Sha256::digest(&value?) {
                 return Ok(Response::new(false));
             }
         }
@@ -285,16 +305,28 @@ impl BlobRpc for BlobStore {
         Ok(Response::new(true))
     }
 
-    async fn not_eq_data(&self, request: StreamingRequest<BlobId>) -> RpcResponse<bool> {
+    async fn not_eq_data(&self, request: StreamingRequest<NotEqDataRequest>) -> RpcResponse<bool> {
+        let mut stream = request.into_inner();
+        let db = self.connect().map_err(duckdb_err_to_tonic_status)?;
+
+        let mut stream = Box::pin(stream!({
+            while let Some(NotEqDataRequest { id }) = stream.message().await? {
+                let data = db
+                    .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
+                        row.get::<_, Vec<u8>>(0)
+                    })
+                    .map_err(duckdb_err_to_tonic_status)?;
+
+                yield Ok::<_, Status>(data);
+            }
+        }));
+
         let mut unique_values = BTreeSet::new();
 
-        let mut values = self.get(request).await?.into_inner();
-        while let Some(value) = values.next().await {
-            let BlobData { bytes, .. } = value?;
-
+        while let Some(value) = stream.next().await {
             // `insert` returns false if the value already exists.
             // Hash the values to avoid storing it fully in memory.
-            if !unique_values.insert(Sha256::digest(&bytes)) {
+            if !unique_values.insert(Sha256::digest(&value?)) {
                 return Ok(Response::new(false));
             }
         }

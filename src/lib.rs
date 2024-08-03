@@ -57,11 +57,17 @@ mod bindings {
 pub mod proto {
     /// Protobuf types needed to interact with the BLOB store.
     pub mod blob {
-        pub use crate::bindings::buffdb::blob::{BlobData, BlobId, UpdateRequest};
+        pub use crate::bindings::buffdb::blob::{
+            DeleteRequest, DeleteResponse, EqDataRequest, GetRequest, GetResponse,
+            NotEqDataRequest, StoreRequest, StoreResponse, UpdateRequest, UpdateResponse,
+        };
     }
     /// Protobuf types needed to interact with the KV store.
     pub mod kv {
-        pub use crate::bindings::buffdb::kv::{Key, KeyValue, Value};
+        pub use crate::bindings::buffdb::kv::{
+            DeleteRequest, DeleteResponse, EqRequest, GetRequest, GetResponse, NotEqRequest,
+            SetRequest, SetResponse,
+        };
     }
     /// Protobuf types needed to send raw queries to a given store.
     pub mod query {

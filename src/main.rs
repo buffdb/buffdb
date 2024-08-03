@@ -6,9 +6,8 @@ mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use anyhow::{bail, Result};
-use buffdb::proto::blob::{BlobData, BlobId, UpdateRequest};
+use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
-use buffdb::proto::kv::{Key, KeyValue, Value};
 use buffdb::server::kv::KvServer;
 use buffdb::store::{BlobStore, KvStore};
 use buffdb::transitive;
@@ -99,29 +98,35 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
     match command {
         cli::KvCommand::Get { keys } => {
             let mut values = client
-                .get(stream::iter(keys.into_iter().map(|key| Key { key })))
+                .get(stream::iter(
+                    keys.into_iter().map(|key| kv::GetRequest { key }),
+                ))
                 .await?
                 .into_inner();
 
             let mut stdout = io::stdout();
             let first = values.message().await?;
-            if let Some(Value { value }) = first {
+            if let Some(kv::GetResponse { value }) = first {
                 stdout.write_all(value.as_bytes()).await?;
             } else {
                 return Ok(ExitCode::FAILURE); // TODO enforce this via clap?
             }
-            while let Some(Value { value }) = values.message().await? {
+            while let Some(kv::GetResponse { value }) = values.message().await? {
                 stdout.write_all(value.as_bytes()).await?;
             }
         }
         cli::KvCommand::Set { key, value } => {
-            let _response = client.set(stream::iter([KeyValue { key, value }])).await?;
+            let _response = client
+                .set(stream::iter([kv::SetRequest { key, value }]))
+                .await?;
         }
         cli::KvCommand::Delete { key } => {
-            let _response = client.delete(stream::iter([Key { key }])).await?;
+            let _response = client
+                .delete(stream::iter([kv::DeleteRequest { key }]))
+                .await?;
         }
         cli::KvCommand::Eq { keys } => {
-            let keys = keys.into_iter().map(|key| Key { key });
+            let keys = keys.into_iter().map(|key| kv::EqRequest { key });
             let all_eq = client.eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_eq {
@@ -129,7 +134,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
             }
         }
         cli::KvCommand::NotEq { keys } => {
-            let keys = keys.into_iter().map(|key| Key { key });
+            let keys = keys.into_iter().map(|key| kv::NotEqRequest { key });
             let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_neq {
@@ -162,7 +167,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
     match command {
         cli::BlobCommand::Get { id, mode } => {
             let blob: Vec<_> = client
-                .get(stream::iter([BlobId { id }]))
+                .get(stream::iter([blob::GetRequest { id }]))
                 .await?
                 .into_inner()
                 .collect()
@@ -170,7 +175,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             drop(client);
 
             let (bytes, metadata) = match blob.as_slice() {
-                [Ok(BlobData { bytes, metadata })] => (bytes, metadata),
+                [Ok(blob::GetResponse { bytes, metadata })] => (bytes, metadata),
                 [Err(err)] => return Err(err.clone().into()),
                 _ => bail!("expected exactly one BlobId"),
             };
@@ -197,7 +202,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             metadata,
         } => {
             let id: Vec<_> = client
-                .store(stream::iter([BlobData {
+                .store(stream::iter([blob::StoreRequest {
                     bytes: read_file_or_stdin(file_path).await?,
                     metadata,
                 }]))
@@ -208,7 +213,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             drop(client);
             match id.as_slice() {
                 #[allow(clippy::print_stdout)]
-                [Ok(BlobId { id })] => println!("{id}"),
+                [Ok(blob::StoreResponse { id })] => println!("{id}"),
                 [Err(err)] => return Err(err.clone().into()),
                 _ => bail!("expected exactly one BlobId"),
             }
@@ -218,7 +223,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             mode: BlobUpdateMode::Data { file_path },
         } => {
             let _response = client
-                .update(stream::iter([UpdateRequest {
+                .update(stream::iter([blob::UpdateRequest {
                     id,
                     bytes: Some(read_file_or_stdin(file_path).await?),
                     should_update_metadata: false,
@@ -231,7 +236,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             mode: BlobUpdateMode::Metadata { metadata },
         } => {
             let _response = client
-                .update(stream::iter([UpdateRequest {
+                .update(stream::iter([blob::UpdateRequest {
                     id,
                     bytes: None,
                     should_update_metadata: true,
@@ -248,7 +253,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 },
         } => {
             let _response = client
-                .update(stream::iter([UpdateRequest {
+                .update(stream::iter([blob::UpdateRequest {
                     id,
                     bytes: Some(read_file_or_stdin(file_path).await?),
                     should_update_metadata: true,
@@ -257,11 +262,15 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 .await?;
         }
         cli::BlobCommand::Delete { id } => {
-            let _response = client.delete(stream::iter([BlobId { id }])).await?;
+            let _response = client
+                .delete(stream::iter([blob::DeleteRequest { id }]))
+                .await?;
         }
         cli::BlobCommand::EqData { ids } => {
             let all_eq = client
-                .eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
+                .eq_data(stream::iter(
+                    ids.into_iter().map(|id| blob::EqDataRequest { id }),
+                ))
                 .await?
                 .into_inner();
             drop(client);
@@ -271,7 +280,9 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
         }
         cli::BlobCommand::NotEqData { ids } => {
             let all_neq = client
-                .not_eq_data(stream::iter(ids.into_iter().map(|id| BlobId { id })))
+                .not_eq_data(stream::iter(
+                    ids.into_iter().map(|id| blob::NotEqDataRequest { id }),
+                ))
                 .await?
                 .into_inner();
             drop(client);
