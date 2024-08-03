@@ -1,2 +1,6 @@
 /target
 **/*.db
+**/node_modules
+examples/typescript/tsconfig.tsbuildinfo
+examples/typescript/**/*.js
+examples/typescript/proto
