@@ -14,16 +14,21 @@ categories = ["database-implementations", "embedded"]
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--generate-link-to-definition"]
 
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"
+panic = "abort"
+
 [[bin]]
 name = "buffdb"
 required-features = ["binary"]
 
 [features]
 default = []
-binary = ["dep:anyhow", "dep:clap"]
+binary = ["dep:clap"]
 
 [dependencies]
-anyhow = { version = "1.0.86", optional = true }
 async-stream = "0.3.5"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
 crossbeam = "0.8.4"

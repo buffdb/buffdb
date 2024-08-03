@@ -5,7 +5,6 @@
 mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
-use anyhow::{bail, Result};
 use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
 use buffdb::server::kv::KvServer;
@@ -19,7 +18,19 @@ use tokio::fs;
 use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
 
-fn main() -> Result<ExitCode> {
+/// A custom error message.
+#[derive(Debug)]
+struct ErrStr(&'static str);
+
+impl std::error::Error for ErrStr {}
+
+impl std::fmt::Display for ErrStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
@@ -48,9 +59,11 @@ async fn run(
         blob_store,
         addr,
     }: RunArgs,
-) -> Result<ExitCode> {
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     if kv_store == blob_store {
-        bail!("kv_store and blob_store cannot be at the same location");
+        return Err(Box::new(ErrStr(
+            "kv_store and blob_store cannot be at the same location",
+        )));
     } else {
         // Rust's standard library has extension traits for Unix and Windows. Windows doesn't have
         // the concept of hard links, so there's no need to check an equivalent of inodes.
@@ -64,7 +77,9 @@ async fn run(
                 kv_store_metadata.ok().zip(blob_store_metadata.ok())
             {
                 if kv_store_metadata.ino() == blob_store_metadata.ino() {
-                    bail!("kv_store and blob_store cannot be at the same location");
+                    return Err(Box::new(ErrStr(
+                        "kv_store and blob_store cannot be at the same location",
+                    )));
                 }
             }
         }
@@ -93,7 +108,7 @@ async fn run(
 ///
 /// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
 /// by a null byte (`\0`).
-async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
+async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let mut client = transitive::kv_client(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
@@ -105,10 +120,9 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
                 .into_inner();
 
             let mut stdout = io::stdout();
-            let kv::GetResponse { value } = values
-                .message()
-                .await?
-                .expect("at least one value is required; should be enforced by clap");
+            let Some(kv::GetResponse { value }) = values.message().await? else {
+                return Err(Box::new(ErrStr("expected at least one value")));
+            };
             stdout.write_all(value.as_bytes()).await?;
             while let Some(kv::GetResponse { value }) = values.message().await? {
                 stdout.write_all(&[0]).await?;
@@ -162,7 +176,9 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode> {
 /// When storing a BLOB, the ID of the newly-created BLOB is written to stdout.
 ///
 /// Nothing is written to stdout for other operations.
-async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
+async fn blob(
+    BlobArgs { store, command }: BlobArgs,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
     let mut client = transitive::blob_client(store.clone()).await?;
     match command {
         cli::BlobCommand::Get { id, mode } => {
@@ -177,7 +193,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
             let (bytes, metadata) = match blob.as_slice() {
                 [Ok(blob::GetResponse { bytes, metadata })] => (bytes, metadata),
                 [Err(err)] => return Err(err.clone().into()),
-                _ => bail!("expected exactly one BlobId"),
+                _ => return Err(Box::new(ErrStr("expected exactly one BlobId"))),
             };
 
             match mode {
@@ -215,7 +231,7 @@ async fn blob(BlobArgs { store, command }: BlobArgs) -> Result<ExitCode> {
                 #[allow(clippy::print_stdout)]
                 [Ok(blob::StoreResponse { id })] => println!("{id}"),
                 [Err(err)] => return Err(err.clone().into()),
-                _ => bail!("expected exactly one BlobId"),
+                _ => return Err(Box::new(ErrStr("expected exactly one BlobId"))),
             }
         }
         cli::BlobCommand::Update {
