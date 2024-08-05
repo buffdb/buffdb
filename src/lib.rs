@@ -1,7 +1,7 @@
 //! **BuffDB is experimental software**; many things are not yet decided.
 //!
-//! BuffDB is an implementation of a persistence layer for gRPC and is backed by [DuckDB]. Its goal
-//! is to abstract away complexity associated with using protobufs.
+//! BuffDB is an implementation of a persistence layer for gRPC. Its goal is to abstract away
+//! complexity associated with using protobufs.
 //!
 //! [DuckDB]: https://duckdb.org/
 //!

@@ -8,9 +8,9 @@ buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/P7
 have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/). Many basic
 things are not yet decided.
 
-This is an early implementation of a persistence layer for gRPC written in Rust and based on DuckDB.
-The goal is to abstract a lot of the complexity associated with using protobufs and flattbuffers so
-that mobile users can go fast.
+This is an early implementation of a persistence layer for gRPC written in Rust. The goal is to
+abstract a lot of the complexity associated with using protobufs and flattbuffers so that mobile
+users can go fast.
 
 ## How to run
 
