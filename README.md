@@ -37,13 +37,14 @@ Run `cargo add buffdb tonic tokio futures` to add the necessary dependencies. Th
 the following code, which is placed in `src/main.rs`.
 
 ```rust
+use buffdb::backend::DuckDb;
 use buffdb::kv::{Key, KeyValue, Value};
 use tonic::{Request, IntoRequest};
 use futures::{stream, StreamExt as _};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = buffdb::transitive::kv_client("kv_store.db").await?;
+    let mut client = buffdb::transitive::kv_client::<_, DuckDb>("kv_store.db").await?;
     client
         .set(stream::iter([KeyValue {
             key: "key_set".to_owned(),
@@ -100,7 +101,8 @@ Commands altering a store will exit with an error code if the key/id does not ex
 to this is updating the metadata of a blob to be null, as it is not required to exist beforehand.
 
 All commands for `kv` and `blob` can use `-s`/`--store` to specify which store to use. The defaults
-are `kv_store.db` and `blob_store.db` respectively.
+are `kv_store.db` and `blob_store.db` respectively. To select a backend, use `-b`/`--backend`. The
+default varies by which backends are enabled.
 
 ## Background
 

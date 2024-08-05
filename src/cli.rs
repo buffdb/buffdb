@@ -6,12 +6,17 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// The backend to use for BuffDB.
+///
+/// Note that the backend must be enabled at compile time for it to be used.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub(crate) enum Backend {
     #[cfg(feature = "duckdb")]
     #[clap(name = "duckdb")]
+    #[allow(clippy::missing_docs_in_private_items)]
     DuckDb,
     #[cfg(feature = "sqlite")]
+    #[allow(clippy::missing_docs_in_private_items)]
     Sqlite,
 }
 
@@ -22,13 +27,18 @@ impl Default for Backend {
         return Self::Sqlite;
         #[cfg(feature = "duckdb")]
         return Self::DuckDb;
+
+        unreachable!()
     }
 }
 
+/// Command-line arguments for BuffDB.
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
+    /// The backend to use for BuffDB.
     #[arg(value_enum, short, long, default_value_t = Backend::default())]
     pub(crate) backend: Backend,
+    /// The operation to perform.
     #[command(subcommand)]
     pub(crate) command: Command,
 }

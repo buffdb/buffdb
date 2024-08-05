@@ -1,3 +1,5 @@
+//! Interoperability helpers for third-party to third-party conversions.
+
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
 use std::sync::Arc;
 use tonic::Status;
@@ -7,7 +9,9 @@ pub(crate) fn into_tonic_status<E: IntoTonicStatus>(err: E) -> Status {
     err.into_tonic_status()
 }
 
+/// Convert an error into `tonic::Status`.
 pub trait IntoTonicStatus {
+    /// Convert an error into `tonic::Status`.
     fn into_tonic_status(self) -> Status;
 }
 
