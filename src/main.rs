@@ -2,6 +2,9 @@
 //!
 //! For usage, run `cargo run -- --help`.
 
+#[cfg(not(any(feature = "duckdb", feature = "sqlite",)))]
+compile_error!("at least one backend must be enabled (options are `duckdb` and `sqlite`)");
+
 mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};

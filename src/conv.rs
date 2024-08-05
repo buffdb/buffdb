@@ -1,9 +1,10 @@
-use std::collections::BTreeMap;
-
-use duckdb::types::Value as DuckdbValue;
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 use prost::{Message, Name};
+#[cfg(feature = "duckdb")]
 use prost_types::value::Kind;
 use prost_types::*;
+#[cfg(feature = "duckdb")]
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub(crate) struct Unsupported {
@@ -11,6 +12,7 @@ pub(crate) struct Unsupported {
 }
 
 impl Unsupported {
+    #[allow(unused)] // not all backends use this
     pub(crate) const fn new(message: &'static str) -> Self {
         Self { message }
     }
@@ -22,7 +24,65 @@ impl From<Unsupported> for tonic::Status {
     }
 }
 
-pub(crate) fn duckdb_value_to_protobuf_any(value: DuckdbValue) -> Result<Any, Unsupported> {
+#[allow(dead_code)] // not all backends use every variant
+enum ConcreteValue {
+    NullValue,
+    BoolValue(bool),
+    Int32Value(i32),
+    Int64Value(i64),
+    UInt32Value(u32),
+    UInt64Value(u64),
+    FloatValue(f32),
+    DoubleValue(f64),
+    StringValue(String),
+    BytesValue(Vec<u8>),
+    Timestamp(Timestamp),
+    ListValue(ListValue),
+    Struct(Struct),
+    Value(Value),
+}
+
+impl ConcreteValue {
+    #[cfg(any(feature = "duckdb", feature = "sqlite"))]
+    fn into_any(self) -> Any {
+        macro_rules! google_proto {
+            ($file:literal) => {
+                concat!(
+                    "https://github.com/protocolbuffers/protobuf/raw/",
+                    "db48abbef49312d76d442c0cde6a551961726b28/src/google/protobuf/",
+                    $file
+                )
+                .to_owned()
+            };
+        }
+
+        let (type_url, value) = match self {
+            // TODO What's the correct encoding for NullValue?
+            Self::NullValue => (google_proto!("struct.proto"), vec![]),
+            Self::BoolValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::Int32Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::Int64Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::UInt32Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::UInt64Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::FloatValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::DoubleValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::StringValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::BytesValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
+            Self::Timestamp(val) => (Timestamp::type_url(), val.encode_to_vec()),
+            Self::ListValue(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
+            Self::Struct(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
+            Self::Value(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
+        };
+
+        Any { type_url, value }
+    }
+}
+
+#[cfg(feature = "duckdb")]
+pub(crate) fn duckdb_value_to_protobuf_any(
+    value: duckdb::types::Value,
+) -> Result<Any, Unsupported> {
+    use duckdb::types::Value as DuckdbValue;
     Ok(match value {
         DuckdbValue::Null => ConcreteValue::NullValue,
         DuckdbValue::Boolean(val) => ConcreteValue::BoolValue(val),
@@ -115,7 +175,9 @@ pub(crate) fn duckdb_value_to_protobuf_any(value: DuckdbValue) -> Result<Any, Un
     .into_any())
 }
 
-fn duckdb_value_to_protobuf_value(value: &DuckdbValue) -> Result<Value, Unsupported> {
+#[cfg(feature = "duckdb")]
+fn duckdb_value_to_protobuf_value(value: &duckdb::types::Value) -> Result<Value, Unsupported> {
+    use duckdb::types::Value as DuckdbValue;
     match value {
         DuckdbValue::Null => Ok(Value {
             kind: Some(Kind::NullValue(0)),
@@ -210,54 +272,17 @@ fn duckdb_value_to_protobuf_value(value: &DuckdbValue) -> Result<Value, Unsuppor
     }
 }
 
-enum ConcreteValue {
-    NullValue,
-    BoolValue(bool),
-    Int32Value(i32),
-    Int64Value(i64),
-    UInt32Value(u32),
-    UInt64Value(u64),
-    FloatValue(f32),
-    DoubleValue(f64),
-    StringValue(String),
-    BytesValue(Vec<u8>),
-    Timestamp(Timestamp),
-    ListValue(ListValue),
-    Struct(Struct),
-    Value(Value),
-}
-
-impl ConcreteValue {
-    fn into_any(self) -> Any {
-        macro_rules! google_proto {
-            ($file:literal) => {
-                concat!(
-                    "https://github.com/protocolbuffers/protobuf/raw/",
-                    "db48abbef49312d76d442c0cde6a551961726b28/src/google/protobuf/",
-                    $file
-                )
-                .to_owned()
-            };
-        }
-
-        let (type_url, value) = match self {
-            // TODO What's the correct encoding for NullValue?
-            Self::NullValue => (google_proto!("struct.proto"), vec![]),
-            Self::BoolValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::Int32Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::Int64Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::UInt32Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::UInt64Value(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::FloatValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::DoubleValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::StringValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::BytesValue(val) => (google_proto!("wrappers.proto"), val.encode_to_vec()),
-            Self::Timestamp(val) => (Timestamp::type_url(), val.encode_to_vec()),
-            Self::ListValue(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
-            Self::Struct(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
-            Self::Value(val) => (google_proto!("struct.proto"), val.encode_to_vec()),
-        };
-
-        Any { type_url, value }
+#[cfg(feature = "sqlite")]
+pub(crate) fn sqlite_value_to_protobuf_any(
+    value: rusqlite::types::Value,
+) -> Result<Any, Unsupported> {
+    use rusqlite::types::Value;
+    Ok(match value {
+        Value::Null => ConcreteValue::NullValue,
+        Value::Integer(val) => ConcreteValue::Int64Value(val),
+        Value::Real(val) => ConcreteValue::DoubleValue(val),
+        Value::Text(val) => ConcreteValue::StringValue(val),
+        Value::Blob(val) => ConcreteValue::BytesValue(val),
     }
+    .into_any())
 }

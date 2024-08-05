@@ -1,27 +1,25 @@
-use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use crate::backend::{BlobBackend, DatabaseBackend, KvBackend, QueryBackend};
-use crate::conv::duckdb_value_to_protobuf_any;
-use crate::duckdb_helper::{params2, params3};
+use crate::conv::sqlite_value_to_protobuf_any;
 use crate::interop::into_tonic_status;
 use crate::proto::{blob, kv, query};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
-use duckdb::Connection;
 use futures::StreamExt as _;
+use rusqlite::Connection;
 use sha2::{Digest as _, Sha256};
+use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tonic::{async_trait, Response, Status};
 
 #[derive(Debug)]
-pub struct DuckDb {
+pub struct Sqlite {
     location: Location,
     initialized: AtomicBool,
 }
 
-impl DatabaseBackend for DuckDb {
+impl DatabaseBackend for Sqlite {
     type Connection = Connection;
-    type Error = duckdb::Error;
+    type Error = rusqlite::Error;
 
     fn at_location(location: Location) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -42,10 +40,8 @@ impl DatabaseBackend for DuckDb {
     }
 }
 
-// TODO Is there a way to provide a store-agnostic query backend, or does it necessarily have to be
-// tied to a specific store in order to connect?
 #[async_trait]
-impl QueryBackend for DuckDb {
+impl QueryBackend for Sqlite {
     type QueryStream = DynStream<Result<query::QueryResult, Status>>;
     type ExecuteStream = DynStream<Result<query::RowsChanged, Status>>;
 
@@ -74,8 +70,8 @@ impl QueryBackend for DuckDb {
                         let column_count = row.as_ref().column_count();
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
-                            match row.get::<_, duckdb::types::Value>(i) {
-                                Ok(value) => values.push(duckdb_value_to_protobuf_any(value)?),
+                            match row.get::<_, rusqlite::types::Value>(i) {
+                                Ok(value) => values.push(sqlite_value_to_protobuf_any(value)?),
                                 Err(err) => {
                                     let _res = tx.send(Err(err));
                                     break;
@@ -131,7 +127,7 @@ impl QueryBackend for DuckDb {
 }
 
 #[async_trait]
-impl KvBackend for DuckDb {
+impl KvBackend for Sqlite {
     type GetStream = DynStream<Result<kv::GetResponse, Status>>;
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
     type DeleteStream = DynStream<Result<kv::DeleteResponse, Status>>;
@@ -271,7 +267,7 @@ impl KvBackend for DuckDb {
 }
 
 #[async_trait]
-impl BlobBackend for DuckDb {
+impl BlobBackend for Sqlite {
     type GetStream = DynStream<Result<blob::GetResponse, Status>>;
     type StoreStream = DynStream<Result<blob::StoreResponse, Status>>;
     type UpdateStream = DynStream<Result<blob::UpdateResponse, Status>>;
@@ -279,9 +275,7 @@ impl BlobBackend for DuckDb {
 
     fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
         connection.execute_batch(
-            "CREATE SEQUENCE IF NOT EXISTS blob_id_seq START 1;
-            CREATE TABLE IF NOT EXISTS blob(
-                id INTEGER PRIMARY KEY DEFAULT nextval('blob_id_seq'),
+            "CREATE TABLE IF NOT EXISTS blob(
                 data BLOB,
                 metadata TEXT
             );",
@@ -309,7 +303,7 @@ impl BlobBackend for DuckDb {
             while let Some(blob::GetRequest { id }) = stream.message().await? {
                 let (data, metadata) = db
                     .query_row(
-                        "SELECT data, metadata FROM blob WHERE id = ?",
+                        "SELECT data, metadata FROM blob WHERE rowid = ?",
                         [id],
                         |row| {
                             let data: Vec<u8> = row.get(0)?;
@@ -339,8 +333,8 @@ impl BlobBackend for DuckDb {
             while let Some(blob::StoreRequest { bytes, metadata }) = stream.message().await? {
                 let id = db
                     .query_row(
-                        "INSERT INTO blob(data, metadata) VALUES(?, ?) RETURNING id",
-                        params2(bytes, metadata),
+                        "INSERT INTO blob(data, metadata) VALUES(?, ?) RETURNING rowid",
+                        (bytes, metadata),
                         |row| row.get(0),
                     )
                     .map_err(into_tonic_status)?;
@@ -369,20 +363,20 @@ impl BlobBackend for DuckDb {
                     (None, false) => {}
                     (Some(bytes), true) => {
                         db.execute(
-                            "UPDATE blob SET data = ?, metadata = ? WHERE id = ?",
-                            params3(bytes, metadata, id),
+                            "UPDATE blob SET data = ?, metadata = ? WHERE rowid = ?",
+                            (bytes, metadata, id),
                         )
                         .map_err(into_tonic_status)?;
                     }
                     (None, true) => {
                         db.execute(
-                            "UPDATE blob SET metadata = ? WHERE id = ?",
-                            params2(metadata, id),
+                            "UPDATE blob SET metadata = ? WHERE rowid = ?",
+                            (metadata, id),
                         )
                         .map_err(into_tonic_status)?;
                     }
                     (Some(bytes), false) => {
-                        db.execute("UPDATE blob SET data = ? WHERE id = ?", params2(bytes, id))
+                        db.execute("UPDATE blob SET data = ? WHERE rowid = ?", (bytes, id))
                             .map_err(into_tonic_status)?;
                     }
                 }
@@ -400,7 +394,7 @@ impl BlobBackend for DuckDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
         let stream = stream!({
             while let Some(blob::DeleteRequest { id }) = stream.message().await? {
-                db.execute("DELETE FROM blob WHERE id = ?", [id])
+                db.execute("DELETE FROM blob WHERE rowid = ?", [id])
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::DeleteResponse { id });
             }
@@ -415,7 +409,7 @@ impl BlobBackend for DuckDb {
         let mut stream = Box::pin(stream!({
             while let Some(blob::EqDataRequest { id }) = stream.message().await? {
                 let data = db
-                    .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
+                    .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
                         row.get::<_, Vec<u8>>(0)
                     })
                     .map_err(into_tonic_status)?;
@@ -452,7 +446,7 @@ impl BlobBackend for DuckDb {
         let mut stream = Box::pin(stream!({
             while let Some(blob::NotEqDataRequest { id }) = stream.message().await? {
                 let data = db
-                    .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
+                    .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
                         row.get::<_, Vec<u8>>(0)
                     })
                     .map_err(into_tonic_status)?;

@@ -24,6 +24,7 @@
 pub mod backend;
 mod blob;
 mod conv;
+#[cfg(feature = "duckdb")]
 mod duckdb_helper;
 mod interop;
 mod kv;
@@ -119,11 +120,10 @@ pub mod store {
 }
 
 pub use crate::location::Location;
-use futures::Stream;
 pub use prost_types;
-use std::pin::Pin;
 
 /// A response from a gRPC server.
 pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 type StreamingRequest<T> = tonic::Request<tonic::Streaming<T>>;
-type DynStream<T> = Pin<Box<dyn Stream<Item = T> + Send + 'static>>;
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
+type DynStream<T> = std::pin::Pin<Box<dyn futures::Stream<Item = T> + Send + 'static>>;

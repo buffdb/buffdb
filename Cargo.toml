@@ -25,18 +25,21 @@ name = "buffdb"
 required-features = ["binary"]
 
 [features]
-default = []
+default = ["duckdb", "sqlite"]
 binary = ["dep:clap"]
+duckdb = ["dep:duckdb"]
+sqlite = ["dep:rusqlite"]
 
 [dependencies]
 async-stream = "0.3.5"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
 crossbeam = "0.8.4"
-duckdb = { version = "1.0.0", features = ["bundled"] }
+duckdb = { version = "1.0.0", features = ["bundled"], optional = true }
 futures = "0.3.30"
 hyper-util = "0.1.6"
 prost = "0.13.1"
 prost-types = "0.13.1"
+rusqlite = { version = "0.32.1", optional = true }
 sha2 = "0.10.8"
 tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tokio-stream = "0.1.15"

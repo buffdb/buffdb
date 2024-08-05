@@ -1,13 +1,22 @@
 #![allow(missing_docs)] // TODO temporaray
 
+#[cfg(feature = "duckdb")]
 mod duckdb;
+#[cfg(feature = "sqlite")]
+mod sqlite;
 
 mod sealed {
     pub trait Sealed {}
+    #[cfg(feature = "duckdb")]
     impl Sealed for super::duckdb::DuckDb {}
+    #[cfg(feature = "sqlite")]
+    impl Sealed for super::sqlite::Sqlite {}
 }
 
+#[cfg(feature = "duckdb")]
 pub use self::duckdb::DuckDb;
+#[cfg(feature = "sqlite")]
+pub use self::sqlite::Sqlite;
 use crate::proto::{blob, kv, query};
 use crate::{Location, RpcResponse, StreamingRequest};
 use futures::Stream;
@@ -17,6 +26,8 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
     type Connection;
     type Error;
 
+    // TODO Consider a different error type such that in-memory connections can be rejected as
+    // necessary.
     fn at_location(location: Location) -> Result<Self, Self::Error>;
     fn location(&self) -> &Location;
 
