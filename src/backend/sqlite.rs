@@ -11,6 +11,7 @@ use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tonic::{async_trait, Response, Status};
 
+/// A backend utilizing SQLite.
 #[derive(Debug)]
 pub struct Sqlite {
     location: Location,

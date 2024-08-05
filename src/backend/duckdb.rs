@@ -13,6 +13,7 @@ use futures::StreamExt as _;
 use sha2::{Digest as _, Sha256};
 use tonic::{async_trait, Response, Status};
 
+/// A backend utilizing DuckDB.
 #[derive(Debug)]
 pub struct DuckDb {
     location: Location,

@@ -1,7 +1,7 @@
 [package]
 name = "buffdb"
 authors = ["Marcus Eagan", "Jacob Pratt"]
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "Embedded storage at the speed of light."
 repository = "https://github.com/buffdb/buffdb"

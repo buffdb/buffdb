@@ -19,6 +19,7 @@
 //! the `buffdb` binary, which can be used to start a server or interact with a server. For more
 //! information, see the help message for the binary.
 
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 #![allow(clippy::missing_docs_in_private_items)]
 
 pub mod backend;
