@@ -9,6 +9,7 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 keywords = ["database", "storage", "embedded", "key-value", "blob"]
 categories = ["database-implementations", "embedded"]
+include = ["src/**/*", "LICENSE-*", "README.md", "proto/*", "build.rs"]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
