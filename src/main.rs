@@ -7,8 +7,13 @@ compile_error!("at least one backend must be enabled (options are `duckdb` and `
 
 mod cli;
 
-use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
+use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
+#[cfg(feature = "duckdb")]
 use buffdb::backend::DuckDb;
+#[cfg(feature = "sqlite")]
+use buffdb::backend::Sqlite;
+use buffdb::backend::{BlobBackend, KvBackend, QueryBackend};
+use buffdb::interop::IntoTonicStatus;
 use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
 use buffdb::server::kv::KvServer;
@@ -35,16 +40,29 @@ impl std::fmt::Display for ErrStr {
 }
 
 fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let Args { backend, command } = Args::parse();
+
+    let future = async {
+        match backend {
+            #[cfg(feature = "duckdb")]
+            Backend::DuckDb => match command {
+                Command::Run(args) => run::<DuckDb>(args).await,
+                Command::Kv(args) => kv::<DuckDb>(args).await,
+                Command::Blob(args) => blob::<DuckDb>(args).await,
+            },
+            #[cfg(feature = "sqlite")]
+            Backend::Sqlite => match command {
+                Command::Run(args) => run::<Sqlite>(args).await,
+                Command::Kv(args) => kv::<Sqlite>(args).await,
+                Command::Blob(args) => blob::<Sqlite>(args).await,
+            },
+        }
+    };
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(async {
-            match Command::parse() {
-                Command::Run(args) => run(args).await,
-                Command::Kv(args) => kv(args).await,
-                Command::Blob(args) => blob(args).await,
-            }
-        })
+        .block_on(future)
 }
 
 /// Run BuffDB as a server. This function will block until the server is shut down.
@@ -57,13 +75,22 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 ///
 /// `kv_store` and `blob_store` cannot be the same location. This is enforced at runtime to a
 /// reasonable extent.
-async fn run(
+async fn run<Backend>(
     RunArgs {
         kv_store,
         blob_store,
         addr,
     }: RunArgs,
-) -> Result<ExitCode, Box<dyn std::error::Error>> {
+) -> Result<ExitCode, Box<dyn std::error::Error>>
+where
+    Backend: QueryBackend<
+            QueryStream: Send,
+            ExecuteStream: Send,
+            Error: IntoTonicStatus + std::error::Error,
+        > + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
+        + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
+        + 'static,
+{
     if kv_store == blob_store {
         return Err(Box::new(ErrStr(
             "kv_store and blob_store cannot be at the same location",
@@ -89,8 +116,8 @@ async fn run(
         }
     }
 
-    let kv_store = KvStore::<DuckDb>::at_path(kv_store)?;
-    let blob_store = BlobStore::<DuckDb>::at_path(blob_store)?;
+    let kv_store = KvStore::<Backend>::at_path(kv_store)?;
+    let blob_store = BlobStore::<Backend>::at_path(blob_store)?;
 
     Server::builder()
         .add_service(KvServer::new(kv_store))
@@ -112,8 +139,15 @@ async fn run(
 ///
 /// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
 /// by a null byte (`\0`).
-async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let mut client = transitive::kv_client::<_, DuckDb>(store).await?;
+async fn kv<Backend>(
+    KvArgs { store, command }: KvArgs,
+) -> Result<ExitCode, Box<dyn std::error::Error>>
+where
+    Backend: QueryBackend<QueryStream: Send, ExecuteStream: Send, Error: IntoTonicStatus>
+        + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
+        + 'static,
+{
+    let mut client = transitive::kv_client::<_, Backend>(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
             let mut values = client
@@ -180,10 +214,18 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode, Box<dyn std::
 /// When storing a BLOB, the ID of the newly-created BLOB is written to stdout.
 ///
 /// Nothing is written to stdout for other operations.
-async fn blob(
+async fn blob<Backend>(
     BlobArgs { store, command }: BlobArgs,
-) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let mut client = transitive::blob_client::<_, DuckDb>(store.clone()).await?;
+) -> Result<ExitCode, Box<dyn std::error::Error>>
+where
+    Backend: QueryBackend<
+            QueryStream: Send,
+            ExecuteStream: Send,
+            Error: IntoTonicStatus + std::error::Error,
+        > + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
+        + 'static,
+{
+    let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
     match command {
         cli::BlobCommand::Get { id, mode } => {
             let blob: Vec<_> = client

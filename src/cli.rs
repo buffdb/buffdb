@@ -6,8 +6,35 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand, ValueEnum};
 
-/// What operation to perform.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub(crate) enum Backend {
+    #[cfg(feature = "duckdb")]
+    #[clap(name = "duckdb")]
+    DuckDb,
+    #[cfg(feature = "sqlite")]
+    Sqlite,
+}
+
+impl Default for Backend {
+    #[allow(unreachable_code)] // simpler than more complex cfgs
+    fn default() -> Self {
+        #[cfg(feature = "sqlite")]
+        return Self::Sqlite;
+        #[cfg(feature = "duckdb")]
+        return Self::DuckDb;
+    }
+}
+
 #[derive(Debug, Parser)]
+pub(crate) struct Args {
+    #[arg(value_enum, short, long, default_value_t = Backend::default())]
+    pub(crate) backend: Backend,
+    #[command(subcommand)]
+    pub(crate) command: Command,
+}
+
+/// What operation to perform.
+#[derive(Debug, Subcommand)]
 #[command(version, propagate_version = true)]
 pub(crate) enum Command {
     /// Run BuffDB as a server.

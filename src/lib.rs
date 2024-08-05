@@ -26,7 +26,7 @@ mod blob;
 mod conv;
 #[cfg(feature = "duckdb")]
 mod duckdb_helper;
-mod interop;
+pub mod interop;
 mod kv;
 mod location;
 pub mod transitive;
