@@ -1,5 +1,6 @@
 use crate::helpers::assert_stream_eq;
 use anyhow::Result;
+use buffdb::backend::DuckDb;
 use buffdb::proto::kv::{
     DeleteRequest, DeleteResponse, EqRequest, GetRequest, GetResponse, NotEqRequest, SetRequest,
     SetResponse,
@@ -18,7 +19,7 @@ static KV_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
 #[tokio::test]
 #[serial]
 async fn test_query() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     let _response = client
         .set(stream::iter([SetRequest {
@@ -50,7 +51,7 @@ async fn test_query() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_execute() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     let response = client
         .execute(stream::iter([RawQuery {
@@ -73,7 +74,7 @@ async fn test_execute() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_get() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     let _response = client
         .set(stream::iter([SetRequest {
@@ -103,7 +104,7 @@ async fn test_get() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_set() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     let stream = client
         .set(stream::iter([SetRequest {
@@ -127,7 +128,7 @@ async fn test_set() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     let _response = client
         .set(stream::iter([SetRequest {
@@ -166,7 +167,7 @@ async fn test_delete() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     for key in ["key_a_eq", "key_b_eq", "key_c_eq", "key_d_eq"] {
         let _response = client
@@ -232,7 +233,7 @@ async fn test_eq() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
 
     for (idx, key) in ["key_a_neq", "key_b_neq", "key_c_neq", "key_d_neq"]
         .into_iter()
@@ -301,7 +302,7 @@ async fn test_not_eq() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq_not_found() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
     let res = client
         .eq(stream::iter([EqRequest {
             key: "this-key-should-not-exist".to_owned(),
@@ -315,7 +316,7 @@ async fn test_eq_not_found() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq_not_found() -> Result<()> {
-    let mut client = kv_client(KV_STORE_LOC.clone()).await?;
+    let mut client = kv_client::<_, DuckDb>(KV_STORE_LOC.clone()).await?;
     let res = client
         .not_eq(stream::iter([NotEqRequest {
             key: "this-key-should-not-exist".to_owned(),

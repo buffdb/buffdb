@@ -5,6 +5,7 @@
 mod cli;
 
 use crate::cli::{BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
+use buffdb::backend::DuckDb;
 use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
 use buffdb::server::kv::KvServer;
@@ -85,8 +86,8 @@ async fn run(
         }
     }
 
-    let kv_store = KvStore::at_path(kv_store);
-    let blob_store = BlobStore::at_path(blob_store);
+    let kv_store = KvStore::<DuckDb>::at_path(kv_store)?;
+    let blob_store = BlobStore::<DuckDb>::at_path(blob_store)?;
 
     Server::builder()
         .add_service(KvServer::new(kv_store))
@@ -109,7 +110,7 @@ async fn run(
 /// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
 /// by a null byte (`\0`).
 async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let mut client = transitive::kv_client(store).await?;
+    let mut client = transitive::kv_client::<_, DuckDb>(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
             let mut values = client
@@ -179,7 +180,7 @@ async fn kv(KvArgs { store, command }: KvArgs) -> Result<ExitCode, Box<dyn std::
 async fn blob(
     BlobArgs { store, command }: BlobArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let mut client = transitive::blob_client(store.clone()).await?;
+    let mut client = transitive::blob_client::<_, DuckDb>(store.clone()).await?;
     match command {
         cli::BlobCommand::Get { id, mode } => {
             let blob: Vec<_> = client

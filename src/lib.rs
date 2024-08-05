@@ -21,12 +21,13 @@
 
 #![allow(clippy::missing_docs_in_private_items)]
 
+pub mod backend;
 mod blob;
 mod conv;
-mod db_connection;
 mod duckdb_helper;
 mod interop;
 mod kv;
+mod location;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
@@ -117,7 +118,7 @@ pub mod store {
     pub use crate::kv::KvStore;
 }
 
-pub use crate::db_connection::Location;
+pub use crate::location::Location;
 use futures::Stream;
 pub use prost_types;
 use std::pin::Pin;

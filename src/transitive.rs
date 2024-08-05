@@ -1,16 +1,58 @@
 //! A temporary client for a data store.
 
+use crate::backend::{BlobBackend, DatabaseBackend, KvBackend, QueryBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;
+use crate::interop::{into_tonic_status, IntoTonicStatus};
 use crate::server::blob::BlobServer;
 use crate::server::kv::KvServer;
 use crate::store::{BlobStore, KvStore};
 use crate::Location;
 use hyper_util::rt::TokioIo;
+use std::fmt;
 use std::ops::{Deref, DerefMut};
 use tonic::transport::{Channel, Endpoint, Server};
 
 const DUPLEX_SIZE: usize = 1024;
+
+/// An error from a transitive client.
+#[derive(Debug)]
+pub enum TransitiveError {
+    /// An error from the server.
+    Status(tonic::Status),
+    /// An error from the transport layer.
+    Transport(tonic::transport::Error),
+}
+
+impl fmt::Display for TransitiveError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Status(err) => err.fmt(f),
+            Self::Transport(err) => err.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for TransitiveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Status(err) => Some(err),
+            Self::Transport(err) => Some(err),
+        }
+    }
+}
+
+impl From<tonic::Status> for TransitiveError {
+    fn from(status: tonic::Status) -> Self {
+        Self::Status(status)
+    }
+}
+
+impl From<tonic::transport::Error> for TransitiveError {
+    fn from(error: tonic::transport::Error) -> Self {
+        Self::Transport(error)
+    }
+}
 
 // TODO Add a way to shut down the server, both manually and automatically on drop.
 /// A temporary client for a data store.
@@ -38,7 +80,7 @@ impl<T> DerefMut for Transitive<T> {
 }
 
 macro_rules! declare_clients {
-    ($(fn $fn_name:ident<$client:ident, $server:ident, $store:ident>;)*) => {$(
+    ($(fn $fn_name:ident<$client:ident, $server:ident, $store:ident, $backend:ident>[$($bounds:tt)*];)*) => {$(
         #[doc = concat!("Create a new client for the `", stringify!($client), "` service.")]
         ///
         /// For in-memory connections, it is highly recommended to only call this function once. All
@@ -47,22 +89,33 @@ macro_rules! declare_clients {
         ///
         /// It is **not** guaranteed that the server spawned by this function will be shut down
         /// properly. This is a known issue and will be fixed in a future release.
-        pub async fn $fn_name<L>(
+        pub async fn $fn_name<L, Backend>(
             location: L,
-        ) -> Result<Transitive<$client<Channel>>, tonic::transport::Error>
+        ) -> Result<Transitive<$client<Channel>>, TransitiveError>
         where
             L: Into<Location> + Send,
+            Backend: DatabaseBackend<Error: IntoTonicStatus>
+                + QueryBackend<
+                    Error: IntoTonicStatus,
+                    QueryStream: Send,
+                    ExecuteStream: Send,
+                >
+                + $backend<$($bounds)*>
+                + 'static
         {
             let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
             let _join_handle = tokio::spawn(async move {
                 Server::builder()
-                    .add_service($server::new($store::at_location(location)))
+                    .add_service($server::new(
+                        $store::<Backend>::at_location(location).map_err(into_tonic_status)?
+                    ))
                     .serve_with_incoming(
                         tokio_stream::once(Ok::<_, std::io::Error>(server)),
                     )
-                    .await
+                    .await?;
+                Ok::<_, TransitiveError>(())
             });
 
             let mut client = Some(client);
@@ -90,6 +143,15 @@ macro_rules! declare_clients {
 }
 
 declare_clients! {
-    fn kv_client<KvClient, KvServer, KvStore>;
-    fn blob_client<BlobClient, BlobServer, BlobStore>;
+    fn kv_client<KvClient, KvServer, KvStore, KvBackend>[
+        GetStream: Send,
+        SetStream: Send,
+        DeleteStream: Send,
+    ];
+    fn blob_client<BlobClient, BlobServer, BlobStore, BlobBackend>[
+        GetStream: Send,
+        StoreStream: Send,
+        UpdateStream: Send,
+        DeleteStream: Send,
+    ];
 }
