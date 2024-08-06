@@ -3,7 +3,7 @@
 //! BuffDB is an implementation of a persistence layer for gRPC. Its goal is to abstract away
 //! complexity associated with using protobufs.
 //!
-//! [DuckDB]: https://duckdb.org/
+//! To add BuffDB to your project, run `cargo add buffdb`.
 //!
 //! # Use as a library
 //!

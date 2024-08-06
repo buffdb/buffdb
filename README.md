@@ -13,6 +13,8 @@ SQLite backend, the binary is a mere **1.74 MiB**. It is designed to be used in 
 bandwidth is limited and performance is critical. Protobuf is the messaging format of choice, but
 other formats are planned.
 
+To add BuffDB to your Rust project, run `cargo add buffdb`.
+
 ## TypeScript interaction
 
 Using auto-generated code from the protobuf definition, we can interact with the server in many
