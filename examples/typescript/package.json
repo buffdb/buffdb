@@ -3,10 +3,10 @@
     "version": "1.0.0",
     "main": "index.mjs",
     "scripts": {
-        "generate-types": "npx proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=proto/ ../../proto/**/*.proto",
+        "generate-types": "shopt -s globstar && npx proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=proto/ ../../proto/**/*.proto",
         "build": "npm run generate-types && npx tsc index.ts",
         "exec": "npm run build && node index.js",
-        "clean": "rm -r proto/* index.js"
+        "clean": "rm -r proto index.js"
     },
     "author": "",
     "license": "MIT OR Apache-2.0",

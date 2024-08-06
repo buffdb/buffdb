@@ -4,7 +4,7 @@
 
 # 🦁 buffdb 🦁
 
-buffdb is experimental software. Join buffdb’s <a href="https://discord.gg/4Pzv6sB8" target="_blank">Discord</a> for help and
+buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/4Pzv6sB8) for help and
 have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/11). Many basic
 things are not yet decided.
 
@@ -60,6 +60,9 @@ setTimeout(() => {
     get.end();
 }, 100);
 ```
+
+This example is present in `examples/typescript`. To run it, you need to have Node.js installed. Run
+`npm i` to install the dependencies and `npm run exec` to run the example.
 
 ## How to use
 
