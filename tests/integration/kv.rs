@@ -13,7 +13,7 @@ use serial_test::serial;
 use std::sync::LazyLock;
 
 static KV_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
-    path: "kv_store.test.db".into(),
+    path: super::KV_PATH.into(),
 });
 
 #[tokio::test]

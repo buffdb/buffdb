@@ -71,6 +71,9 @@ setTimeout(() => {
 | DuckDB  | Partial        | ✅                | `duckdb`     | `-b duckdb` |
 | RocksDB | Planned        | ❌                | N/A          | N/A         |
 
+Blockers for full DuckDB support include: [duckdb/duckdb-rs#368](https://github.com/duckdb/duckdb-rs/issues/368),
+but other issues are necessary to have best performance.
+
 ### Server
 
 To run the server, you need to [have Rust installed](https://rustup.rs/). Then, with the repository

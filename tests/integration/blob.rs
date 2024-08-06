@@ -1,6 +1,5 @@
 use crate::helpers::assert_stream_eq;
 use anyhow::{bail, Result};
-use buffdb::backend::DuckDb;
 use buffdb::client::blob::BlobClient;
 use buffdb::proto::blob::{
     DeleteRequest, DeleteResponse, EqDataRequest, GetRequest, GetResponse, NotEqDataRequest,
@@ -15,7 +14,7 @@ use std::sync::LazyLock;
 use tonic::transport::Channel;
 
 static BLOB_STORE_LOC: LazyLock<Location> = LazyLock::new(|| Location::OnDisk {
-    path: "blob_store.test.db".into(),
+    path: super::BLOB_PATH.into(),
 });
 
 async fn insert_one(client: &mut BlobClient<Channel>, value: StoreRequest) -> Result<u64> {
@@ -35,7 +34,7 @@ async fn insert_one(client: &mut BlobClient<Channel>, value: StoreRequest) -> Re
 #[tokio::test]
 #[serial]
 async fn test_query() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let _id = insert_one(
         &mut client,
@@ -69,11 +68,11 @@ async fn test_query() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_execute() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let response = client
         .execute(stream::iter([RawQuery {
-            query: "CREATE SEQUENCE IF NOT EXISTS blob_id_seq START 1;".to_owned(),
+            query: "CREATE TABLE IF NOT EXISTS test_execute_table (value TEXT);".to_owned(),
         }]))
         .await?;
     drop(client);
@@ -91,7 +90,7 @@ async fn test_execute() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_get() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -122,7 +121,7 @@ async fn test_get() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_store() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -153,7 +152,7 @@ async fn test_store() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_both() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -195,7 +194,7 @@ async fn test_update_both() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_bytes() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -234,7 +233,7 @@ async fn test_update_bytes() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_update_metadata() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -273,7 +272,7 @@ async fn test_update_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete_with_metadata() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -304,7 +303,7 @@ async fn test_delete_with_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_delete_no_metadata() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -335,7 +334,7 @@ async fn test_delete_no_metadata() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq_data() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -387,7 +386,7 @@ async fn test_eq_data() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq_data() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
 
     let id = insert_one(
         &mut client,
@@ -439,7 +438,7 @@ async fn test_not_eq_data() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_eq_data_not_found() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
     // If all four of these keys somehow exist, then a test failure is deserved.
     let res = client
         .eq_data(stream::iter([
@@ -457,7 +456,7 @@ async fn test_eq_data_not_found() -> Result<()> {
 #[tokio::test]
 #[serial]
 async fn test_not_eq_data_not_found() -> Result<()> {
-    let mut client = blob_client::<_, DuckDb>(BLOB_STORE_LOC.clone()).await?;
+    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
     // If all four of these keys somehow exist, then a test failure is deserved.
     let res = client
         .not_eq_data(stream::iter([
