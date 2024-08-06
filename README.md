@@ -4,8 +4,8 @@
 
 # 🦁 buffdb 🦁
 
-buffdb is experimental software. Join buffdb’s [Discord](https://discord.gg/P7KaMw3R) for help and
-have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/). Many basic
+buffdb is experimental software. Join buffdb’s <a href="https://discord.gg/4Pzv6sB8" target="_blank">Discord</a> for help and
+have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/issues/11). Many basic
 things are not yet decided.
 
 BuffDB is a lightweight, high-performance persistence layer for gRPC written in Rust. When using the
