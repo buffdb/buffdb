@@ -70,7 +70,7 @@ impl IntoTonicStatus for rusqlite::Error {
     fn into_tonic_status(self) -> Status {
         use rusqlite::ffi::ErrorCode;
         let mut tonic_err = match &self {
-            Self::SqliteFailure(err, _) => match err.code {
+            Self::SqliteFailure(err, msg) => match err.code {
                 ErrorCode::NotFound => Status::not_found("not found"),
                 ErrorCode::InternalMalfunction => Status::internal("internal malfunction"),
                 ErrorCode::PermissionDenied => Status::permission_denied("permission denied"),
@@ -98,7 +98,13 @@ impl IntoTonicStatus for rusqlite::Error {
                 }
                 ErrorCode::ParameterOutOfRange => Status::out_of_range("parameter out of range"),
                 ErrorCode::NotADatabase => Status::invalid_argument("not a database"),
-                ErrorCode::Unknown => Status::unknown("unknown"),
+                ErrorCode::Unknown => {
+                    let message = match msg.as_ref() {
+                        Some(message) => message,
+                        None => "no message",
+                    };
+                    Status::unknown(format!("unknown :{message}"))
+                },
                 _ => Status::unknown("unknown"),
             },
             Self::SqliteSingleThreadedMode => Status::internal("sqlite single threaded mode"),
