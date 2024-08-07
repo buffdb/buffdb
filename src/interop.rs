@@ -13,6 +13,7 @@ pub(crate) fn into_tonic_status<E: IntoTonicStatus>(err: E) -> Status {
 /// Convert an error into `tonic::Status`.
 pub trait IntoTonicStatus {
     /// Convert an error into `tonic::Status`.
+    #[track_caller]
     fn into_tonic_status(self) -> Status;
 }
 
