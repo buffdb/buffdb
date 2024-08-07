@@ -5,6 +5,7 @@
 mod arc;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+mod helpers;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 

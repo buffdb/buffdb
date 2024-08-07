@@ -1,7 +1,6 @@
-use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
+use crate::backend::{helpers, BlobBackend, DatabaseBackend, KvBackend};
 use crate::conv::try_into_protobuf_any;
 use crate::duckdb_helper::{params2, params3};
 use crate::interop::into_tonic_status;
@@ -10,8 +9,6 @@ use crate::queryable::Queryable;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use duckdb::Connection;
-use futures::StreamExt as _;
-use sha2::{Digest as _, Sha256};
 use tonic::{async_trait, Response, Status};
 
 /// A backend utilizing DuckDB.
@@ -194,43 +191,26 @@ impl KvBackend for DuckDb {
     async fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> RpcResponse<bool> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
-        let mut stream = Box::pin(stream!({
+        let stream = Box::pin(stream!({
             while let Some(kv::EqRequest { key }) = stream.message().await? {
                 let value = db
                     .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
                         row.get(0)
                     })
                     .map_err(into_tonic_status)?;
-                yield Ok(
-                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8")
+                yield Ok::<_, Status>(
+                    String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
                 );
             }
         }));
 
-        let value = match stream.next().await {
-            Some(Ok(value)) => value,
-            Some(Err(err)) => return Err(err),
-            // If there are no keys, then all values are by definition equal.
-            None => return Ok(Response::new(true)),
-        };
-        // Hash the values to avoid storing it fully in memory.
-        let first_hash = Sha256::digest(value);
-
-        while let Some(value) = stream.next().await {
-            let value = value?;
-
-            if first_hash != Sha256::digest(value) {
-                return Ok(Response::new(false));
-            }
-        }
-
-        Ok(Response::new(true))
+        Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
     async fn not_eq(&self, request: StreamingRequest<kv::NotEqRequest>) -> RpcResponse<bool> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
-        let mut stream = Box::pin(stream!({
+        let stream = Box::pin(stream!({
             while let Some(kv::NotEqRequest { key }) = stream.message().await? {
                 let value = db
                     .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
@@ -243,17 +223,7 @@ impl KvBackend for DuckDb {
             }
         }));
 
-        let mut unique_values = BTreeSet::new();
-
-        while let Some(value) = stream.next().await {
-            // `insert` returns false if the value already exists.
-            // Hash the values to avoid storing it fully in memory.
-            if !unique_values.insert(Sha256::digest(value?)) {
-                return Ok(Response::new(false));
-            }
-        }
-
-        Ok(Response::new(true))
+        Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
 
@@ -399,7 +369,7 @@ impl BlobBackend for DuckDb {
         let mut stream = request.into_inner();
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
-        let mut stream = Box::pin(stream!({
+        let stream = Box::pin(stream!({
             while let Some(blob::EqDataRequest { id }) = stream.message().await? {
                 let data = db
                     .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
@@ -407,26 +377,11 @@ impl BlobBackend for DuckDb {
                     })
                     .map_err(into_tonic_status)?;
 
-                yield Ok(data);
+                yield Ok::<_, Status>(data);
             }
         }));
 
-        let value = match stream.next().await {
-            Some(Ok(bytes)) => bytes,
-            Some(Err(err)) => return Err(err),
-            // If there are no keys, then all values are by definition equal.
-            None => return Ok(Response::new(true)),
-        };
-        // Hash the values to avoid storing it fully in memory.
-        let first_hash = Sha256::digest(&value);
-
-        while let Some(value) = stream.next().await {
-            if first_hash != Sha256::digest(&value?) {
-                return Ok(Response::new(false));
-            }
-        }
-
-        Ok(Response::new(true))
+        Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
     async fn not_eq_data(
@@ -436,7 +391,7 @@ impl BlobBackend for DuckDb {
         let mut stream = request.into_inner();
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
-        let mut stream = Box::pin(stream!({
+        let stream = Box::pin(stream!({
             while let Some(blob::NotEqDataRequest { id }) = stream.message().await? {
                 let data = db
                     .query_row("SELECT data FROM blob WHERE id = ?", [id], |row| {
@@ -448,16 +403,6 @@ impl BlobBackend for DuckDb {
             }
         }));
 
-        let mut unique_values = BTreeSet::new();
-
-        while let Some(value) = stream.next().await {
-            // `insert` returns false if the value already exists.
-            // Hash the values to avoid storing it fully in memory.
-            if !unique_values.insert(Sha256::digest(&value?)) {
-                return Ok(Response::new(false));
-            }
-        }
-
-        Ok(Response::new(true))
+        Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
