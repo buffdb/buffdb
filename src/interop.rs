@@ -103,8 +103,8 @@ impl IntoTonicStatus for rusqlite::Error {
                         Some(message) => message,
                         None => "no message",
                     };
-                    Status::unknown(format!("unknown :{message}"))
-                },
+                    Status::unknown(format!("unknown: {message}"))
+                }
                 _ => Status::unknown("unknown"),
             },
             Self::SqliteSingleThreadedMode => Status::internal("sqlite single threaded mode"),
