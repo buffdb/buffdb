@@ -9,9 +9,9 @@ have a look at [things that don’t work yet](https://github.com/buffdb/buffdb/i
 things are not yet decided.
 
 BuffDB is a lightweight, high-performance persistence layer for gRPC written in Rust. When using the
-SQLite backend, the binary is a mere **1.74 MiB**. It is designed to be used in environments where
-bandwidth is limited and performance is critical. Protobuf is the messaging format of choice, but
-other formats are planned.
+SQLite backend and dynamic linking, the binary is **under 2 MiB**. It is designed to be used in
+environments where bandwidth is limited and performance is critical. Protobuf is the messaging
+format of choice, but other formats are planned.
 
 To add BuffDB to your Rust project, run `cargo add buffdb`.
 
@@ -23,32 +23,37 @@ server is assumed to be running on port 50051. See the `examples` directory for 
 languages.
 
 ```typescript
-import * as grpc from '@grpc/grpc-js';
-import * as protoLoader from '@grpc/proto-loader';
-import type { ProtoGrpcType as BlobType } from './proto/blob';
-import type { StoreResponse } from './proto/buffdb/blob/StoreResponse';
+import * as grpc from "@grpc/grpc-js";
+import * as protoLoader from "@grpc/proto-loader";
+import type { ProtoGrpcType as BlobType } from "./proto/blob";
+import type { StoreResponse } from "./proto/buffdb/blob/StoreResponse";
 
-const proto = grpc.loadPackageDefinition(protoLoader.loadSync('../../proto/blob.proto')) as unknown as BlobType;
+const proto = grpc.loadPackageDefinition(
+    protoLoader.loadSync("../../proto/blob.proto")
+) as unknown as BlobType;
 
-const blob_client = new proto.buffdb.blob.Blob('[::1]:50051', grpc.credentials.createInsecure());
+const blob_client = new proto.buffdb.blob.Blob(
+    "[::1]:50051",
+    grpc.credentials.createInsecure()
+);
 const get = blob_client.Get();
 const store = blob_client.Store();
 
 // Be sure to set up the listeners before writing data!
 
-get.on('data', data => console.log('received data from GET: ', data));
-get.on('end', () => console.log('stream GET ended'));
+get.on("data", (data) => console.log("received data from GET: ", data));
+get.on("end", () => console.log("stream GET ended"));
 
 const blob_ids: number[] = [];
-store.on('data', (raw_id: StoreResponse) => {
+store.on("data", (raw_id: StoreResponse) => {
     const id = (raw_id.id as protoLoader.Long).toNumber();
-    console.log('received data from STORE: ', id);
+    console.log("received data from STORE: ", id);
     blob_ids.push(id);
 });
-store.on('end', () => console.log('stream STORE ended'));
+store.on("end", () => console.log("stream STORE ended"));
 
-store.write({ bytes: Buffer.from('abcdef'), metadata: "{ offset: 6 }" });
-store.write({ bytes: Buffer.from('ghijkl') });
+store.write({ bytes: Buffer.from("abcdef"), metadata: "{ offset: 6 }" });
+store.write({ bytes: Buffer.from("ghijkl") });
 
 store.end();
 
@@ -70,14 +75,18 @@ This example is present in `examples/typescript`. To run it, you need to have No
 
 ### Supported backends
 
-| Backend | Support status | Raw query support | Feature flag | CLI flag    |
-|---------|----------------|-------------------|--------------|-------------|
-| SQLite  | Full support   | ✅                | `sqlite`     | `-b sqlite` |
-| DuckDB  | Partial        | ✅                | `duckdb`     | `-b duckdb` |
-| RocksDB | Planned        | ❌                | N/A          | N/A         |
+| Backend | Support status | Raw query support | Feature flag (vendored)      | CLI flag    |
+| ------- | -------------- | ----------------- | ---------------------------- | ----------- |
+| SQLite  | Full support   | ✅                | `sqlite` (`vendored-sqlite`) | `-b sqlite` |
+| DuckDB  | Partial        | ✅                | `duckdb` (`vendored-duckdb`) | `-b duckdb` |
+| RocksDB | Planned        | ❌                | N/A                          | N/A         |
 
-Blockers for full DuckDB support include: [duckdb/duckdb-rs#368](https://github.com/duckdb/duckdb-rs/issues/368),
+Blockers for full DuckDB support include [duckdb/duckdb-rs#368](https://github.com/duckdb/duckdb-rs/issues/368),
 but other issues are necessary to have best performance.
+
+By default, all backends are included and vendored. To exclude a backend, use the
+`--no-default-features` flag with cargo and re-enable the desired backend with `--features`. **If
+you encounter unexpected errors, consider using a vendored backend.**
 
 ### Server
 
@@ -93,8 +102,8 @@ the blob data in `blob_store.db`. All three can be configured with command line 
 `--addr`, `--kv-store`, and `--blob-store` respectively.
 
 To build with optimizations enabled, run `cargo build --all-features --release`. The resulting
-binary will be located at `target/release/buffdb`. It is statically linked, so it can be moved
-anywhere on your file system without issue.
+binary will be located at `target/release/buffdb`. It is statically linked (excluding the backends
+depending on flags), so it can be moved anywhere on your file system without issue.
 
 Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as well!
 
@@ -108,21 +117,21 @@ currently supported:
 - `buffdb kv set <KEY> <VALUE>`, setting the value.
 - `buffdb kv delete <KEY>`, deleting the value.
 - `buffdb kv eq [KEYS]...`, exiting successfully if the values for all provided keys are equal.
-  Exits with an error code if any two values are not equal.
+    Exits with an error code if any two values are not equal.
 - `buffdb kv not-eq [KEYS]...`, exiting successfully if the values for all provided keys are
-  unique. Exits with an error code if any two values are equal.
+    unique. Exits with an error code if any two values are equal.
 - `buffdb blob get <ID>`, printing the data to stdout. Note that this is arbitrary bytes!
 - `buffdb blob store <FILE> [METADATA]`, storing the file (use `-` for stdin) and printing the ID
-  to stdout. Metadata is optional.
+    to stdout. Metadata is optional.
 - `buffdb blob update <ID> data <FILE>`, updating the data of the blob. Use `-` for stdin. Metadata
-  is unchanged.
+    is unchanged.
 - `buffdb blob update <ID> metadata [METADATA]`, updating the metadata of the blob. Data is
-  unchanged. Omitting `[METADATA]` will set the metadata to null.
+    unchanged. Omitting `[METADATA]` will set the metadata to null.
 - `buffdb blob update <ID> all <FILE> [METADATA]`, updating both the data and metadata of the blob.
-  For `<FILE>`, use `-` for stdin. Omitting `[METADATA]` will set the metadata to null.
+    For `<FILE>`, use `-` for stdin. Omitting `[METADATA]` will set the metadata to null.
 - `buffdb blob delete <ID>`, deleting the blob.
 - `buffdb blob eq-data [IDS]...`, exiting successfully if the blobs for all provided IDs are equal.
-  Exits with an error code if any two blobs are not equal.
+    Exits with an error code if any two blobs are not equal.
 - `buffdb blob not-eq-data [IDS]...`, exiting successfully if the blobs for all provided IDs are
     unique. Exits with an error code if any two blobs are equal.
 
@@ -191,5 +200,5 @@ performance penalty, but our goal is to eventually be faster than any other embe
 ### Use Cases
 
 - Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games,
-  fieldwork, airline, collaborative documents, etc.).
+    fieldwork, airline, collaborative documents, etc.).
 - IoT: For managing device configurations and states locally before syncing with cloud servers.
