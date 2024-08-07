@@ -1,11 +1,12 @@
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::backend::{BlobBackend, DatabaseBackend, KvBackend, QueryBackend};
-use crate::conv::duckdb_value_to_protobuf_any;
+use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
+use crate::conv::try_into_protobuf_any;
 use crate::duckdb_helper::{params2, params3};
 use crate::interop::into_tonic_status;
 use crate::proto::{blob, kv, query};
+use crate::queryable::Queryable;
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use duckdb::Connection;
@@ -43,42 +44,33 @@ impl DatabaseBackend for DuckDb {
     }
 }
 
-// TODO Is there a way to provide a store-agnostic query backend, or does it necessarily have to be
-// tied to a specific store in order to connect?
-#[async_trait]
-impl QueryBackend for DuckDb {
+impl Queryable for DuckDb {
+    type Connection = Connection;
     type QueryStream = DynStream<Result<query::QueryResult, Status>>;
-    type ExecuteStream = DynStream<Result<query::RowsChanged, Status>>;
 
-    async fn query(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> RpcResponse<Self::QueryStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect().map_err(into_tonic_status)?;
-
+    async fn query(query: String, connection: Connection) -> (Self::QueryStream, Connection) {
         // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
         // with `drop(statement);` can be used.`
         let (tx, rx) = crossbeam::channel::bounded(64);
 
-        while let Some(query::RawQuery { query }) = stream.message().await? {
-            let mut statement = match db.prepare(&query) {
-                Ok(statement) => statement,
-                Err(err) => {
-                    let _res = tx.send(Err(err));
-                    break;
-                }
-            };
-            match statement.query([]) {
+        match connection.prepare(&query) {
+            Ok(mut statement) => match statement.query([]) {
                 Ok(mut rows) => {
                     while let Ok(Some(row)) = rows.next() {
                         let column_count = row.as_ref().column_count();
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
-                            match row.get::<_, duckdb::types::Value>(i) {
-                                Ok(value) => values.push(duckdb_value_to_protobuf_any(value)?),
+                            match row
+                                .get::<_, duckdb::types::Value>(i)
+                                .map(try_into_protobuf_any)
+                            {
+                                Ok(Ok(value)) => values.push(value),
+                                Ok(Err(err)) => {
+                                    let _res = tx.send(Err(into_tonic_status(err)));
+                                    break;
+                                }
                                 Err(err) => {
-                                    let _res = tx.send(Err(err));
+                                    let _res = tx.send(Err(into_tonic_status(err)));
                                     break;
                                 }
                             }
@@ -87,39 +79,12 @@ impl QueryBackend for DuckDb {
                     }
                 }
                 Err(err) => {
-                    let _res = tx.send(Err(err));
-                    break;
+                    let _res = tx.send(Err(into_tonic_status(err)));
                 }
-            };
-        }
-
-        let stream = stream!({
-            while let Ok(result) = rx.recv() {
-                yield result.map_err(into_tonic_status);
+            },
+            Err(err) => {
+                let _res = tx.send(Err(into_tonic_status(err)));
             }
-        });
-        Ok(Response::new(Box::pin(stream)))
-    }
-
-    async fn execute(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> RpcResponse<Self::ExecuteStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect().map_err(into_tonic_status)?;
-
-        // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
-        // with `drop(statement);` can be used.`
-        let (tx, rx) = crossbeam::channel::bounded(64);
-
-        while let Some(query::RawQuery { query }) = stream.message().await? {
-            let mut statement = db.prepare(&query).map_err(into_tonic_status)?;
-            let rows_changed = statement.execute([]).map_err(into_tonic_status)?;
-            let _res = tx.send(Ok(query::RowsChanged {
-                rows_changed: rows_changed
-                    .try_into()
-                    .expect("more than 10^19 rows altered"),
-            }));
         }
 
         let stream = stream!({
@@ -127,7 +92,28 @@ impl QueryBackend for DuckDb {
                 yield result;
             }
         });
-        Ok(Response::new(Box::pin(stream)))
+
+        (Box::pin(stream), connection)
+    }
+
+    async fn execute(
+        query: String,
+        connection: Connection,
+    ) -> (Result<query::RowsChanged, Status>, Connection) {
+        match connection
+            .prepare(&query)
+            .and_then(|mut statement| statement.execute([]))
+        {
+            Ok(rows_changed) => (
+                Ok(query::RowsChanged {
+                    rows_changed: rows_changed
+                        .try_into()
+                        .expect("more than 10^19 rows altered"),
+                }),
+                connection,
+            ),
+            Err(err) => (Err(into_tonic_status(err)), connection),
+        }
     }
 }
 

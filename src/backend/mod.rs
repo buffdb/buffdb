@@ -2,17 +2,24 @@
 //!
 //! Note that backends must be enabled at compile time using the appropriate feature flag.
 
+mod arc;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 
+use std::sync::Arc;
+
 mod sealed {
+    use super::*;
+
     pub trait Sealed {}
     #[cfg(feature = "duckdb")]
-    impl Sealed for super::duckdb::DuckDb {}
+    impl Sealed for DuckDb {}
     #[cfg(feature = "sqlite")]
-    impl Sealed for super::sqlite::Sqlite {}
+    impl Sealed for Sqlite {}
+
+    impl<T> Sealed for Arc<T> {}
 }
 
 #[cfg(feature = "duckdb")]
@@ -47,7 +54,7 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
 
 /// A backend that supports executing arbitrary queries.
 #[async_trait]
-pub trait QueryBackend: DatabaseBackend {
+pub trait QueryBackend: DatabaseBackend + Send + Sync {
     /// A stream that is returned when a query is executed. Returns the result of the query.
     type QueryStream: Stream<Item = Result<query::QueryResult, tonic::Status>>;
     /// A stream that is returned when a query is executed. Returns the number of rows changed.

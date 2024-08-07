@@ -5,7 +5,6 @@ use buffdb::proto::blob::{
     DeleteRequest, DeleteResponse, EqDataRequest, GetRequest, GetResponse, NotEqDataRequest,
     StoreRequest, StoreResponse, UpdateRequest, UpdateResponse,
 };
-use buffdb::proto::query::{QueryResult, RawQuery, RowsChanged};
 use buffdb::transitive::blob_client;
 use buffdb::Location;
 use futures::{stream, StreamExt as _};
@@ -29,62 +28,6 @@ async fn insert_one(client: &mut BlobClient<Channel>, value: StoreRequest) -> Re
         [Err(e)] => Err(e.clone().into()),
         _ => bail!("expected exactly one BlobId"),
     }
-}
-
-#[tokio::test]
-#[serial]
-async fn test_query() -> Result<()> {
-    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
-
-    let _id = insert_one(
-        &mut client,
-        StoreRequest {
-            bytes: b"abcdef".to_vec(),
-            metadata: None,
-        },
-    )
-    .await?;
-
-    let mut response = client
-        .query(stream::iter([RawQuery {
-            query: "SELECT COUNT(*) FROM blob".to_owned(),
-        }]))
-        .await?
-        .into_inner();
-    drop(client);
-
-    let QueryResult { fields } = response
-        .next()
-        .await
-        .expect("one result should be present")?;
-    assert_eq!(fields.len(), 1);
-    // TODO check the actual value
-
-    assert!(response.next().await.is_none());
-
-    Ok(())
-}
-
-#[tokio::test]
-#[serial]
-async fn test_execute() -> Result<()> {
-    let mut client = blob_client::<_, super::Backend>(BLOB_STORE_LOC.clone()).await?;
-
-    let response = client
-        .execute(stream::iter([RawQuery {
-            query: "CREATE TABLE IF NOT EXISTS test_execute_table (value TEXT);".to_owned(),
-        }]))
-        .await?;
-    drop(client);
-    let mut response = response.into_inner();
-    assert!(matches!(
-        response.next().await,
-        Some(Ok(RowsChanged { rows_changed: 0 }))
-    ));
-
-    assert!(response.next().await.is_none());
-
-    Ok(())
 }
 
 #[tokio::test]

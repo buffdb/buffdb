@@ -9,6 +9,9 @@ mod sqlite {
     mod kv {
         include!("kv.rs");
     }
+    mod query {
+        include!("query.rs");
+    }
 }
 
 mod duckdb {
@@ -19,9 +22,11 @@ mod duckdb {
     mod blob {
         include!("blob.rs");
     }
-
     mod kv {
         include!("kv.rs");
+    }
+    mod query {
+        include!("query.rs");
     }
 }
 
@@ -31,3 +36,5 @@ mod helpers;
 mod blob;
 #[cfg(rust_analyzer)]
 mod kv;
+#[cfg(rust_analyzer)]
+mod query;

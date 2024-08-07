@@ -30,6 +30,8 @@ mod duckdb_helper;
 pub mod interop;
 mod kv;
 mod location;
+mod query;
+pub mod queryable;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
@@ -74,7 +76,7 @@ pub mod proto {
     }
     /// Protobuf types needed to send raw queries to a given store.
     pub mod query {
-        pub use crate::bindings::buffdb::query::{QueryResult, RawQuery, RowsChanged};
+        pub use crate::bindings::buffdb::query::{QueryResult, RawQuery, RowsChanged, TargetStore};
     }
 }
 
@@ -88,6 +90,10 @@ pub mod server {
     pub mod kv {
         pub use crate::bindings::buffdb::kv::kv_server::KvServer;
     }
+    /// gRPC server for the raw query execution.
+    pub mod query {
+        pub use crate::bindings::buffdb::query::query_server::QueryServer;
+    }
 }
 
 /// gRPC client definitions.
@@ -99,6 +105,10 @@ pub mod client {
     /// gRPC client for the KV store.
     pub mod kv {
         pub use crate::bindings::buffdb::kv::kv_client::KvClient;
+    }
+    /// gRPC client for the raw query execution.
+    pub mod query {
+        pub use crate::bindings::buffdb::query::query_client::QueryClient;
     }
 }
 
@@ -112,12 +122,17 @@ pub mod service {
     pub mod kv {
         pub use crate::bindings::buffdb::kv::kv_server::Kv as KvRpc;
     }
+    /// gRPC service for the raw query execution.
+    pub mod query {
+        pub use crate::bindings::buffdb::query::query_server::Query as QueryRpc;
+    }
 }
 
 /// Store implementations.
 pub mod store {
     pub use crate::blob::BlobStore;
     pub use crate::kv::KvStore;
+    pub use crate::query::QueryHandler;
 }
 
 pub use crate::location::Location;

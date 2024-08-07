@@ -6,16 +6,20 @@ use prost_types::*;
 #[cfg(feature = "duckdb")]
 use std::collections::BTreeMap;
 
-#[derive(Debug)]
-pub(crate) struct Unsupported {
-    message: &'static str,
+pub(crate) fn try_into_protobuf_any<T>(value: T) -> Result<Any, Unsupported>
+where
+    T: TryIntoProtobufAny,
+{
+    value.try_into_protobuf_any()
 }
 
-impl Unsupported {
-    #[allow(unused)] // not all backends use this
-    pub(crate) const fn new(message: &'static str) -> Self {
-        Self { message }
-    }
+pub(crate) trait TryIntoProtobufAny {
+    fn try_into_protobuf_any(self) -> Result<Any, Unsupported>;
+}
+
+#[derive(Debug)]
+pub(crate) struct Unsupported {
+    pub(crate) message: &'static str,
 }
 
 impl From<Unsupported> for tonic::Status {
@@ -79,100 +83,100 @@ impl ConcreteValue {
 }
 
 #[cfg(feature = "duckdb")]
-pub(crate) fn duckdb_value_to_protobuf_any(
-    value: duckdb::types::Value,
-) -> Result<Any, Unsupported> {
-    use duckdb::types::Value as DuckdbValue;
-    Ok(match value {
-        DuckdbValue::Null => ConcreteValue::NullValue,
-        DuckdbValue::Boolean(val) => ConcreteValue::BoolValue(val),
-        DuckdbValue::TinyInt(val) => ConcreteValue::Int32Value(val as _),
-        DuckdbValue::SmallInt(val) => ConcreteValue::Int32Value(val as _),
-        DuckdbValue::Int(val) => ConcreteValue::Int32Value(val),
-        DuckdbValue::BigInt(val) => ConcreteValue::Int64Value(val),
-        DuckdbValue::HugeInt(_) => Err(Unsupported::new(
-            "128 bit integers are unsupported because they are not representable in \
-            google.protobuf; may be supported in the future",
-        ))?,
-        DuckdbValue::UTinyInt(val) => ConcreteValue::UInt32Value(val as _),
-        DuckdbValue::USmallInt(val) => ConcreteValue::UInt32Value(val as _),
-        DuckdbValue::UInt(val) => ConcreteValue::UInt32Value(val),
-        DuckdbValue::UBigInt(val) => ConcreteValue::UInt64Value(val),
-        DuckdbValue::Float(val) => ConcreteValue::FloatValue(val),
-        DuckdbValue::Double(val) => ConcreteValue::DoubleValue(val),
-        DuckdbValue::Decimal(val) => ConcreteValue::DoubleValue(val.try_into().unwrap_or(f64::NAN)),
-        DuckdbValue::Timestamp(unit, scale) | DuckdbValue::Time64(unit, scale) => {
-            let (seconds, nanos) = match unit {
-                duckdb::types::TimeUnit::Second => (scale, 0),
-                duckdb::types::TimeUnit::Millisecond => {
-                    (scale / 1_000, (scale % 1_000) * 1_000_000)
-                }
-                duckdb::types::TimeUnit::Microsecond => {
-                    (scale / 1_000_000, (scale % 1_000_000) * 1_000)
-                }
-                duckdb::types::TimeUnit::Nanosecond => {
-                    (scale / 1_000_000_000, scale % 1_000_000_000)
-                }
-            };
-            ConcreteValue::Timestamp(Timestamp {
-                seconds,
-                nanos: nanos as i32,
-            })
+impl TryIntoProtobufAny for duckdb::types::Value {
+    fn try_into_protobuf_any(self) -> Result<Any, Unsupported> {
+        Ok(match self {
+            Self::Null => ConcreteValue::NullValue,
+            Self::Boolean(val) => ConcreteValue::BoolValue(val),
+            Self::TinyInt(val) => ConcreteValue::Int32Value(val as _),
+            Self::SmallInt(val) => ConcreteValue::Int32Value(val as _),
+            Self::Int(val) => ConcreteValue::Int32Value(val),
+            Self::BigInt(val) => ConcreteValue::Int64Value(val),
+            Self::HugeInt(_) => Err(Unsupported {
+                message: "128 bit integers are unsupported because they are not representable in \
+                    google.protobuf; may be supported in the future",
+            })?,
+            Self::UTinyInt(val) => ConcreteValue::UInt32Value(val as _),
+            Self::USmallInt(val) => ConcreteValue::UInt32Value(val as _),
+            Self::UInt(val) => ConcreteValue::UInt32Value(val),
+            Self::UBigInt(val) => ConcreteValue::UInt64Value(val),
+            Self::Float(val) => ConcreteValue::FloatValue(val),
+            Self::Double(val) => ConcreteValue::DoubleValue(val),
+            Self::Decimal(val) => ConcreteValue::DoubleValue(val.try_into().unwrap_or(f64::NAN)),
+            Self::Timestamp(unit, scale) | Self::Time64(unit, scale) => {
+                let (seconds, nanos) = match unit {
+                    duckdb::types::TimeUnit::Second => (scale, 0),
+                    duckdb::types::TimeUnit::Millisecond => {
+                        (scale / 1_000, (scale % 1_000) * 1_000_000)
+                    }
+                    duckdb::types::TimeUnit::Microsecond => {
+                        (scale / 1_000_000, (scale % 1_000_000) * 1_000)
+                    }
+                    duckdb::types::TimeUnit::Nanosecond => {
+                        (scale / 1_000_000_000, scale % 1_000_000_000)
+                    }
+                };
+                ConcreteValue::Timestamp(Timestamp {
+                    seconds,
+                    nanos: nanos as i32,
+                })
+            }
+            Self::Text(val) | Self::Enum(val) => ConcreteValue::StringValue(val),
+            Self::Blob(val) => ConcreteValue::BytesValue(val),
+            Self::Date32(_) => {
+                return Err(Unsupported {
+                    message: "Date32 is unsupported because the meaning of the value is not \
+                        clear; may be supported in the future",
+                })
+            }
+            Self::Interval {
+                months,
+                days,
+                nanos,
+            } => ConcreteValue::Struct(Struct {
+                fields: BTreeMap::from_iter([
+                    (
+                        "months".to_owned(),
+                        Value {
+                            kind: Some(Kind::NumberValue(months as f64)),
+                        },
+                    ),
+                    (
+                        "days".to_owned(),
+                        Value {
+                            kind: Some(Kind::NumberValue(days as f64)),
+                        },
+                    ),
+                    (
+                        "nanos".to_owned(),
+                        Value {
+                            kind: Some(Kind::NumberValue(nanos as f64)),
+                        },
+                    ),
+                ]),
+            }),
+            Self::List(val) | Self::Array(val) => ConcreteValue::ListValue(ListValue {
+                values: val
+                    .iter()
+                    .map(duckdb_value_to_protobuf_value)
+                    .collect::<Result<_, _>>()?,
+            }),
+            Self::Struct(val) => ConcreteValue::Struct(Struct {
+                fields: val
+                    .iter()
+                    .map(|(k, v)| duckdb_value_to_protobuf_value(v).map(|val| (k.to_string(), val)))
+                    .collect::<Result<_, _>>()?,
+            }),
+            Self::Map(_) => {
+                return Err(Unsupported {
+                    message: "maps cannot be represented in google.protobuf; may be supported in \
+                        the future",
+                })
+            }
+            Self::Union(val) => ConcreteValue::Value(duckdb_value_to_protobuf_value(&val)?),
         }
-        DuckdbValue::Text(val) | DuckdbValue::Enum(val) => ConcreteValue::StringValue(val),
-        DuckdbValue::Blob(val) => ConcreteValue::BytesValue(val),
-        DuckdbValue::Date32(_) => {
-            return Err(Unsupported::new(
-                "Date32 is unsupported because the meaning of the value is not clear; may be \
-                supported in the future",
-            ))
-        }
-        DuckdbValue::Interval {
-            months,
-            days,
-            nanos,
-        } => ConcreteValue::Struct(Struct {
-            fields: BTreeMap::from_iter([
-                (
-                    "months".to_owned(),
-                    Value {
-                        kind: Some(Kind::NumberValue(months as f64)),
-                    },
-                ),
-                (
-                    "days".to_owned(),
-                    Value {
-                        kind: Some(Kind::NumberValue(days as f64)),
-                    },
-                ),
-                (
-                    "nanos".to_owned(),
-                    Value {
-                        kind: Some(Kind::NumberValue(nanos as f64)),
-                    },
-                ),
-            ]),
-        }),
-        DuckdbValue::List(val) | DuckdbValue::Array(val) => ConcreteValue::ListValue(ListValue {
-            values: val
-                .iter()
-                .map(duckdb_value_to_protobuf_value)
-                .collect::<Result<_, _>>()?,
-        }),
-        DuckdbValue::Struct(val) => ConcreteValue::Struct(Struct {
-            fields: val
-                .iter()
-                .map(|(k, v)| duckdb_value_to_protobuf_value(v).map(|val| (k.to_string(), val)))
-                .collect::<Result<_, _>>()?,
-        }),
-        DuckdbValue::Map(_) => {
-            return Err(Unsupported::new(
-                "maps cannot be represented in google.protobuf; may be supported in the future",
-            ))
-        }
-        DuckdbValue::Union(val) => ConcreteValue::Value(duckdb_value_to_protobuf_value(&val)?),
+        .into_any())
     }
-    .into_any())
 }
 
 #[cfg(feature = "duckdb")]
@@ -235,10 +239,10 @@ fn duckdb_value_to_protobuf_value(value: &duckdb::types::Value) -> Result<Value,
             kind: Some(Kind::StringValue(val.clone())),
         }),
         DuckdbValue::Blob(_) => Ok(Value { kind: None }),
-        DuckdbValue::Date32(_) => Err(Unsupported::new(
-            "Date32 type is unsupported because the meaning of the value is not clear; may be \
-            supported in the future",
-        )),
+        DuckdbValue::Date32(_) => Err(Unsupported {
+            message: "Date32 type is unsupported because the meaning of the value is not clear; \
+                may be supported in the future",
+        }),
         DuckdbValue::Interval {
             months,
             days,
@@ -265,24 +269,24 @@ fn duckdb_value_to_protobuf_value(value: &duckdb::types::Value) -> Result<Value,
                     .collect::<Result<_, _>>()?,
             })),
         }),
-        DuckdbValue::Map(_) => Err(Unsupported::new(
-            "maps cannot be represented in google.protobuf; may be supported in the future",
-        )),
+        DuckdbValue::Map(_) => Err(Unsupported {
+            message: "maps cannot be represented in google.protobuf; may be supported in the \
+                future",
+        }),
         DuckdbValue::Union(val) => duckdb_value_to_protobuf_value(val),
     }
 }
 
 #[cfg(feature = "sqlite")]
-pub(crate) fn sqlite_value_to_protobuf_any(
-    value: rusqlite::types::Value,
-) -> Result<Any, Unsupported> {
-    use rusqlite::types::Value;
-    Ok(match value {
-        Value::Null => ConcreteValue::NullValue,
-        Value::Integer(val) => ConcreteValue::Int64Value(val),
-        Value::Real(val) => ConcreteValue::DoubleValue(val),
-        Value::Text(val) => ConcreteValue::StringValue(val),
-        Value::Blob(val) => ConcreteValue::BytesValue(val),
+impl TryIntoProtobufAny for rusqlite::types::Value {
+    fn try_into_protobuf_any(self) -> Result<Any, Unsupported> {
+        Ok(match self {
+            Self::Null => ConcreteValue::NullValue,
+            Self::Integer(val) => ConcreteValue::Int64Value(val),
+            Self::Real(val) => ConcreteValue::DoubleValue(val),
+            Self::Text(val) => ConcreteValue::StringValue(val),
+            Self::Blob(val) => ConcreteValue::BytesValue(val),
+        }
+        .into_any())
     }
-    .into_any())
 }

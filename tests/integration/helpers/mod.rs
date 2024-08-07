@@ -1,10 +1,9 @@
 use std::fmt::Debug;
-
 use tonic::Streaming;
 
 pub(crate) async fn assert_stream_eq<S, X>(mut stream: Streaming<S>, expected: X)
 where
-    S: PartialEq<X::Item>,
+    S: PartialEq<X::Item> + Debug,
     X: IntoIterator<Item: Debug, IntoIter: Send> + Send,
 {
     let mut expected = expected.into_iter();

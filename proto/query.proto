@@ -3,10 +3,29 @@ syntax = "proto3";
 package buffdb.query;
 import 'google/protobuf/any.proto';
 
+/// The service definition for raw query operations.
+service Query {
+  // Execute a query, returning the raw output.
+  rpc Query(stream RawQuery) returns (stream QueryResult);
+
+  // Execute a query, returning the number of rows changed, inserted, or deleted.
+  rpc Execute(stream RawQuery) returns (stream RowsChanged);
+}
+
+// Which store the query should be executed on.
+enum TargetStore {
+  // Execute the query on the key-value store.
+  KV = 0;
+  // Execute the query on the BLOB store.
+  BLOB = 1;
+}
+
 // A raw query.
 message RawQuery {
   // The raw query to execute.
   string query = 1;
+  // The store to execute the query on.
+  TargetStore target = 2;
 }
 
 // The result of a raw query.

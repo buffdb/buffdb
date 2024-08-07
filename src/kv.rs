@@ -5,6 +5,7 @@ use crate::interop::IntoTonicStatus;
 use crate::proto::kv::{DeleteRequest, EqRequest, GetRequest, NotEqRequest, SetRequest};
 use crate::proto::query::RawQuery;
 use crate::service::kv::KvRpc;
+use crate::service::query::QueryRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 
@@ -18,25 +19,6 @@ use std::path::PathBuf;
 pub struct KvStore<Backend> {
     backend: Backend,
 }
-
-// impl<Backend> DbConnectionInfo for KvStore<Backend> {
-//     fn initialize(&self, db: &Database) -> duckdb::Result<()> {
-//         let _rows_changed = db.execute(
-//             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
-//             [],
-//         )?;
-//         self.initialized.store(true, Ordering::Relaxed);
-//         Ok(())
-//     }
-
-//     fn was_initialized(&self) -> bool {
-//         self.initialized.load(Ordering::Relaxed)
-//     }
-
-//     fn location(&self) -> &Location {
-//         &self.location
-//     }
-// }
 
 impl<Backend> KvStore<Backend>
 where
@@ -72,17 +54,12 @@ where
 }
 
 #[tonic::async_trait]
-impl<Backend> KvRpc for KvStore<Backend>
+impl<Backend> QueryRpc for KvStore<Backend>
 where
-    Backend: QueryBackend<Error: IntoTonicStatus, QueryStream: Send, ExecuteStream: Send>
-        + KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
-        + 'static,
+    Backend: QueryBackend<Error: IntoTonicStatus, QueryStream: Send, ExecuteStream: Send> + 'static,
 {
     type QueryStream = Backend::QueryStream;
     type ExecuteStream = Backend::ExecuteStream;
-    type GetStream = Backend::GetStream;
-    type SetStream = Backend::SetStream;
-    type DeleteStream = Backend::DeleteStream;
 
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         self.backend.query(request).await
@@ -94,6 +71,17 @@ where
     ) -> RpcResponse<Self::ExecuteStream> {
         self.backend.execute(request).await
     }
+}
+
+#[tonic::async_trait]
+impl<Backend> KvRpc for KvStore<Backend>
+where
+    Backend: KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
+        + 'static,
+{
+    type GetStream = Backend::GetStream;
+    type SetStream = Backend::SetStream;
+    type DeleteStream = Backend::DeleteStream;
 
     async fn get(&self, request: StreamingRequest<GetRequest>) -> RpcResponse<Self::GetStream> {
         self.backend.get(request).await

@@ -1,5 +1,6 @@
 //! Interoperability helpers for third-party to third-party conversions.
 
+use crate::conv::Unsupported;
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
 use std::sync::Arc;
 use tonic::Status;
@@ -143,5 +144,17 @@ impl IntoTonicStatus for rusqlite::Error {
         };
         let _status = tonic_err.set_source(Arc::new(self));
         tonic_err
+    }
+}
+
+impl IntoTonicStatus for prost::UnknownEnumValue {
+    fn into_tonic_status(self) -> Status {
+        Status::invalid_argument(format!("unknown enumeration value {}", self.0))
+    }
+}
+
+impl IntoTonicStatus for Unsupported {
+    fn into_tonic_status(self) -> Status {
+        Status::unimplemented(format!("unsupported type: {}", self.message))
     }
 }

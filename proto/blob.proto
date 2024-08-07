@@ -3,16 +3,9 @@ syntax = "proto3";
 package buffdb.blob;
 import 'google/protobuf/any.proto';
 import 'google/protobuf/wrappers.proto';
-import 'query.proto';
 
 // Service definition for BLOB operations.
 service Blob {
-  // Execute a query, returning the raw output.
-  rpc Query(stream buffdb.query.RawQuery) returns (stream buffdb.query.QueryResult);
-
-  // Execute a query, returning the number of rows changed, inserted, or deleted.
-  rpc Execute(stream buffdb.query.RawQuery) returns (stream buffdb.query.RowsChanged);
-
   // Retrieves a BLOB by its ID.
   rpc Get(stream GetRequest) returns (stream GetResponse);
 

@@ -12,7 +12,7 @@ use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunAr
 use buffdb::backend::DuckDb;
 #[cfg(feature = "sqlite")]
 use buffdb::backend::Sqlite;
-use buffdb::backend::{BlobBackend, KvBackend, QueryBackend};
+use buffdb::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use buffdb::interop::IntoTonicStatus;
 use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
@@ -75,6 +75,7 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 ///
 /// `kv_store` and `blob_store` cannot be the same location. This is enforced at runtime to a
 /// reasonable extent.
+// TODO two variants: queryable and non-queryable
 async fn run<Backend>(
     RunArgs {
         kv_store,
@@ -83,11 +84,9 @@ async fn run<Backend>(
     }: RunArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: QueryBackend<
-            QueryStream: Send,
-            ExecuteStream: Send,
-            Error: IntoTonicStatus + std::error::Error,
-        > + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
+    Backend: DatabaseBackend<Error: IntoTonicStatus + std::error::Error>
+        // + Queryable<QueryStream: Send>
+        + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
         + 'static,
 {
@@ -143,8 +142,7 @@ async fn kv<Backend>(
     KvArgs { store, command }: KvArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: QueryBackend<QueryStream: Send, ExecuteStream: Send, Error: IntoTonicStatus>
-        + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
+    Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send, Error: IntoTonicStatus>
         + 'static,
 {
     let mut client = transitive::kv_client::<_, Backend>(store).await?;
@@ -218,12 +216,13 @@ async fn blob<Backend>(
     BlobArgs { store, command }: BlobArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: QueryBackend<
-            QueryStream: Send,
-            ExecuteStream: Send,
-            Error: IntoTonicStatus + std::error::Error,
-        > + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
-        + 'static,
+    Backend: BlobBackend<
+            GetStream: Send,
+            StoreStream: Send,
+            UpdateStream: Send,
+            DeleteStream: Send,
+            Error: IntoTonicStatus,
+        > + 'static,
 {
     let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
     match command {

@@ -1,16 +1,21 @@
 //! A temporary client for a data store.
 
-use crate::backend::{BlobBackend, DatabaseBackend, KvBackend, QueryBackend};
+use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;
+use crate::client::query::QueryClient;
 use crate::interop::{into_tonic_status, IntoTonicStatus};
+use crate::query::QueryHandler;
+use crate::queryable::Queryable;
 use crate::server::blob::BlobServer;
 use crate::server::kv::KvServer;
+use crate::server::query::QueryServer;
 use crate::store::{BlobStore, KvStore};
 use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
+use std::path::PathBuf;
 use tonic::transport::{Channel, Endpoint, Server};
 
 const DUPLEX_SIZE: usize = 1024;
@@ -95,11 +100,6 @@ macro_rules! declare_clients {
         where
             L: Into<Location> + Send,
             Backend: DatabaseBackend<Error: IntoTonicStatus>
-                + QueryBackend<
-                    Error: IntoTonicStatus,
-                    QueryStream: Send,
-                    ExecuteStream: Send,
-                >
                 + $backend<$($bounds)*>
                 + 'static
         {
@@ -154,4 +154,61 @@ declare_clients! {
         UpdateStream: Send,
         DeleteStream: Send,
     ];
+    // fn query_client<QueryClient, QueryServer, QueryHandler, QueryBackend>[];
+}
+
+/// Create a new client for the `QueryClient` service.
+///
+/// For in-memory connections, it is highly recommended to only call this function once. All
+/// in-memory connections share the same stream, so any asynchronous calls have a nondeterministic
+/// order. This is not a problem for on-disk connections.
+///
+/// It is **not** guaranteed that the server spawned by this function will be shut down properly.
+/// This is a known issue and will be fixed in a future release.
+pub async fn query_client<L1, L2, Backend>(
+    kv_path: L1,
+    blob_path: L2,
+) -> Result<Transitive<QueryClient<Channel>>, TransitiveError>
+where
+    L1: Into<PathBuf> + Send,
+    L2: Into<PathBuf> + Send,
+    Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
+        + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
+        + Send
+        + Sync
+        + 'static,
+{
+    let (kv_path, blob_path) = (kv_path.into(), blob_path.into());
+    let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
+
+    let _join_handle = tokio::spawn(async move {
+        Server::builder()
+            .add_service(QueryServer::new(
+                QueryHandler::<Backend>::at_path(kv_path, blob_path).map_err(into_tonic_status)?,
+            ))
+            .serve_with_incoming(tokio_stream::once(Ok::<_, std::io::Error>(server)))
+            .await?;
+        Ok::<_, TransitiveError>(())
+    });
+
+    let mut client = Some(client);
+    let channel = Endpoint::try_from("http://[::]:50051")?
+        .connect_with_connector(tower::service_fn(move |_| {
+            let client = client.take();
+            async move {
+                if let Some(client) = client {
+                    Ok(TokioIo::new(client))
+                } else {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Client already taken",
+                    ))
+                }
+            }
+        }))
+        .await?;
+
+    Ok(Transitive {
+        client: QueryClient::new(channel),
+    })
 }

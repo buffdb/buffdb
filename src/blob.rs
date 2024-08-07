@@ -1,11 +1,10 @@
 //! A store for binary large objects (BLOBs) with an optional metadata field.
 
-use crate::backend::{BlobBackend, DatabaseBackend, QueryBackend};
+use crate::backend::{BlobBackend, DatabaseBackend};
 use crate::interop::IntoTonicStatus;
 use crate::proto::blob::{
     DeleteRequest, EqDataRequest, GetRequest, NotEqDataRequest, StoreRequest, UpdateRequest,
 };
-use crate::proto::query::RawQuery;
 use crate::service::blob::BlobRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
@@ -20,32 +19,6 @@ use std::path::PathBuf;
 pub struct BlobStore<Backend> {
     backend: Backend,
 }
-
-// impl<Backend> DbConnectionInfo for BlobStore<Backend>
-// where
-//     Backend: DatabaseBackend,
-// {
-//     fn initialize(&self, db: &Database) -> duckdb::Result<()> {
-//         db.execute_batch(
-//             "CREATE SEQUENCE IF NOT EXISTS blob_id_seq START 1;
-//             CREATE TABLE IF NOT EXISTS blob(
-//                 id INTEGER PRIMARY KEY DEFAULT nextval('blob_id_seq'),
-//                 data BLOB,
-//                 metadata TEXT
-//             );",
-//         )?;
-//         self.initialized.store(true, Ordering::Relaxed);
-//         Ok(())
-//     }
-
-//     fn was_initialized(&self) -> bool {
-//         self.initialized.load(Ordering::Relaxed)
-//     }
-
-//     fn location(&self) -> &Location {
-//         &self.location
-//     }
-// }
 
 impl<Backend> BlobStore<Backend>
 where
@@ -83,8 +56,7 @@ where
 #[tonic::async_trait]
 impl<Backend> BlobRpc for BlobStore<Backend>
 where
-    Backend: QueryBackend<Error: IntoTonicStatus, QueryStream: Send, ExecuteStream: Send>
-        + BlobBackend<
+    Backend: BlobBackend<
             Error: IntoTonicStatus,
             GetStream: Send,
             StoreStream: Send,
@@ -92,23 +64,10 @@ where
             DeleteStream: Send,
         > + 'static,
 {
-    type QueryStream = Backend::QueryStream;
-    type ExecuteStream = Backend::ExecuteStream;
     type GetStream = Backend::GetStream;
     type StoreStream = Backend::StoreStream;
     type UpdateStream = Backend::UpdateStream;
     type DeleteStream = Backend::DeleteStream;
-
-    async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
-        self.backend.query(request).await
-    }
-
-    async fn execute(
-        &self,
-        request: StreamingRequest<RawQuery>,
-    ) -> RpcResponse<Self::ExecuteStream> {
-        self.backend.execute(request).await
-    }
 
     async fn get(&self, request: StreamingRequest<GetRequest>) -> RpcResponse<Self::GetStream> {
         self.backend.get(request).await
