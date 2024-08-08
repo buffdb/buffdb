@@ -7,7 +7,7 @@
 
 use buffdb::client::kv::KvClient;
 use buffdb::client::query::QueryClient;
-use buffdb::proto::kv::{GetRequest, SetRequest};
+use buffdb::proto::kv::{DeleteRequest, GetRequest, SetRequest};
 use buffdb::proto::query::{RawQuery, TargetStore};
 use buffdb::{backend, transitive, Location};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
@@ -19,10 +19,24 @@ use std::iter;
 
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
+const DELETE_QUERIES_PER_BATCH: usize = 1_000;
 
-/// Insert one million rows into the database, returning `RETURN_COUNT` keys. All other
-/// keys are effectively discarded, only being present in the database to ensure a real-world load.
-async fn insert_1m_rows_raw<T, const RETURN_COUNT: usize>(conn: &mut QueryClient<T>) -> Vec<String>
+const PREFILL_ROW_COUNT: usize = 100_000;
+
+fn create_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap()
+}
+
+/// Insert a large number of rows into the database, returning `RETURN_COUNT` key-value pairs. All
+/// other pairs are effectively discarded, only being present in the database to ensure a real-world
+/// load.
+async fn prefill_rows_raw<T, const RETURN_COUNT: usize>(
+    conn: &mut QueryClient<T>,
+) -> Vec<(String, String)>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody, Future: Send> + Send,
     T::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
@@ -39,15 +53,16 @@ where
                 query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
                 target: TargetStore::Kv as _,
             },
-            key,
+            (key, value),
         ))
     })
-    .take(1_000_000)
+    .take(PREFILL_ROW_COUNT)
     .collect();
 
     let ret = requests
         .iter()
-        .map(|req| req.1.clone())
+        .cloned()
+        .map(|req| req.1)
         .take(RETURN_COUNT)
         .collect();
 
@@ -57,9 +72,10 @@ where
     ret
 }
 
-/// Insert one million rows into the database, returning `RETURN_COUNT` keys. All other
-/// keys are effectively discarded, only being present in the database to ensure a real-world load.
-async fn insert_1m_rows<T, const RETURN_COUNT: usize>(conn: &mut KvClient<T>) -> Vec<String>
+/// Insert a large number of rows into the database, returning `RETURN_COUNT` key-value pairs. All
+/// other pairs are effectively discarded, only being present in the database to ensure a real-world
+/// load.
+async fn prefill_rows<T, const RETURN_COUNT: usize>(conn: &mut KvClient<T>) -> Vec<(String, String)>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody, Future: Send> + Send,
     T::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
@@ -73,12 +89,13 @@ where
         let value = Alphanumeric.sample_string(&mut rng, 20);
         Some(SetRequest { key, value })
     })
-    .take(1_000_000)
+    .take(PREFILL_ROW_COUNT)
     .collect();
 
     let ret = requests
         .iter()
-        .map(|req| req.key.clone())
+        .cloned()
+        .map(|req| (req.key, req.value))
         .take(RETURN_COUNT)
         .collect();
 
@@ -185,13 +202,13 @@ fn sqlite_get_raw(c: &mut Criterion) {
             transitive::query_client::<_, _, backend::Sqlite>(Location::InMemory, "/dev/null")
                 .await
                 .unwrap();
-        let keys = insert_1m_rows_raw::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
+        let keys = prefill_rows_raw::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
         (client, keys)
     });
 
     let queries = keys
         .into_iter()
-        .map(|key| RawQuery {
+        .map(|(key, _)| RawQuery {
             query: format!("SELECT (key, value) FROM kv WHERE key = '{key}'"),
             target: TargetStore::Kv as _,
         })
@@ -217,13 +234,13 @@ fn sqlite_get(c: &mut Criterion) {
         let mut client = transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
             .await
             .unwrap();
-        let keys = insert_1m_rows::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
+        let keys = prefill_rows::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
         (client, keys)
     });
 
     let keys = keys
         .into_iter()
-        .map(|key| GetRequest { key })
+        .map(|(key, _)| GetRequest { key })
         .collect::<Vec<_>>();
 
     c.bench_function("sqlite_kv_get", |b| {
@@ -237,11 +254,103 @@ fn sqlite_get(c: &mut Criterion) {
     });
 }
 
+fn sqlite_delete_raw(c: &mut Criterion) {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+
+    let (mut client, kv_pairs) = runtime.block_on(async {
+        let mut client =
+            transitive::query_client::<_, _, backend::Sqlite>(Location::InMemory, "/dev/null")
+                .await
+                .unwrap();
+        let keys = prefill_rows_raw::<_, DELETE_QUERIES_PER_BATCH>(&mut client).await;
+        (client, keys)
+    });
+
+    let queries = kv_pairs
+        .iter()
+        .map(|(key, _)| RawQuery {
+            query: format!("DELETE FROM kv WHERE key = '{key}'"),
+            target: TargetStore::Kv as _,
+        })
+        .collect::<Vec<_>>();
+
+    c.bench_function("sqlite_kv_delete_raw", |b| {
+        b.iter_batched(
+            || {
+                // Reinsert the deleted keys to avoid trying to delete non-existent keys on
+                // iterations after the first.
+                let mut insert_queries = vec![];
+                for (key, value) in &kv_pairs {
+                    insert_queries.push(RawQuery {
+                        query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
+                        target: TargetStore::Kv as _,
+                    });
+                }
+                runtime.block_on(async {
+                    client.query(stream::iter(insert_queries)).await.unwrap();
+                });
+
+                (stream::iter(queries.clone()), client.clone())
+            },
+            |(queries, mut client)| {
+                runtime.block_on(async { client.query(queries).await.unwrap() })
+            },
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+fn sqlite_delete(c: &mut Criterion) {
+    let runtime = create_runtime();
+
+    let (mut client, kv_pairs) = runtime.block_on(async {
+        let mut client = transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
+            .await
+            .unwrap();
+        let keys = prefill_rows::<_, DELETE_QUERIES_PER_BATCH>(&mut client).await;
+        (client, keys)
+    });
+
+    let queries = kv_pairs
+        .iter()
+        .cloned()
+        .map(|(key, _)| DeleteRequest { key })
+        .collect::<Vec<_>>();
+
+    c.bench_function("sqlite_kv_delete", |b| {
+        b.iter_batched(
+            || {
+                // Reinsert the deleted keys to avoid trying to delete non-existent keys on
+                // iterations after the first.
+                let mut insert_queries = vec![];
+                for (key, value) in kv_pairs.iter().cloned() {
+                    insert_queries.push(SetRequest { key, value });
+                }
+                runtime.block_on(async {
+                    client.set(stream::iter(insert_queries)).await.unwrap();
+                });
+
+                (stream::iter(queries.clone()), client.clone())
+            },
+            |(queries, mut client)| {
+                runtime.block_on(async { client.delete(queries).await.unwrap() })
+            },
+            BatchSize::SmallInput,
+        );
+    });
+}
+
 criterion_group!(
     buffdb,
     sqlite_insert,
     sqlite_insert_raw,
     sqlite_get,
-    sqlite_get_raw
+    sqlite_get_raw,
+    sqlite_delete,
+    sqlite_delete_raw,
 );
 criterion_main!(buffdb);
