@@ -11,10 +11,13 @@ use buffdb::{backend, transitive, Location};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use futures::stream;
 use rand::distributions::{Alphanumeric, DistString};
+use std::iter;
 
 // TODO randomize the length of generated strings
 
-fn buffdb_insert_raw(c: &mut Criterion) {
+const QUERIES_PER_BATCH: usize = 1_000;
+
+fn sqlite_insert_raw(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
@@ -38,33 +41,32 @@ fn buffdb_insert_raw(c: &mut Criterion) {
     });
     let mut rng = rand::thread_rng();
 
-    c.bench_function("buffdb_kv_insert_raw", |b| {
+    c.bench_function("sqlite_kv_insert_raw", |b| {
         b.to_async(&runtime).iter_batched(
             || {
-                let key = Alphanumeric.sample_string(&mut rng, 20);
-                let value = Alphanumeric.sample_string(&mut rng, 20);
-                (
-                    // No risk of SQL injection here as the values are known to be alphanumeric.
-                    // Even if they weren't, it's a transitive in-memory database.
-                    format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
-                    client.clone(),
-                )
-            },
-            |(query, mut client)| async move {
-                client
-                    .execute(stream::iter([RawQuery {
-                        query,
+                let queries: Vec<_> = iter::from_fn(|| {
+                    let key = Alphanumeric.sample_string(&mut rng, 20);
+                    let value = Alphanumeric.sample_string(&mut rng, 20);
+                    Some(RawQuery {
+                        // No risk of SQL injection here as the values are known to be alphanumeric.
+                        // Even if they weren't, it's a transitive in-memory database.
+                        query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
                         target: TargetStore::Kv as _,
-                    }]))
-                    .await
-                    .unwrap();
+                    })
+                })
+                .take(QUERIES_PER_BATCH)
+                .collect();
+                (stream::iter(queries), client.clone())
+            },
+            |(queries, mut client)| async move {
+                client.execute(queries).await.unwrap();
             },
             BatchSize::SmallInput,
         );
     });
 }
 
-fn buffdb_insert(c: &mut Criterion) {
+fn sqlite_insert(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
         .enable_all()
@@ -81,25 +83,25 @@ fn buffdb_insert(c: &mut Criterion) {
     // Initializing the client before the first query should not be necessary, as it will be done
     // during the warmup phase.
 
-    c.bench_function("buffdb_kv_insert", |b| {
+    c.bench_function("sqlite_kv_insert", |b| {
         b.to_async(&runtime).iter_batched(
             || {
-                (
-                    Alphanumeric.sample_string(&mut rng, 20),
-                    Alphanumeric.sample_string(&mut rng, 20),
-                    client.clone(),
-                )
+                let requests: Vec<_> = iter::from_fn(|| {
+                    let key = Alphanumeric.sample_string(&mut rng, 20);
+                    let value = Alphanumeric.sample_string(&mut rng, 20);
+                    Some(SetRequest { key, value })
+                })
+                .take(QUERIES_PER_BATCH)
+                .collect();
+                (stream::iter(requests), client.clone())
             },
-            |(key, value, mut client)| async move {
-                client
-                    .set(stream::iter([SetRequest { key, value }]))
-                    .await
-                    .unwrap();
+            |(requests, mut client)| async move {
+                client.set(requests).await.unwrap();
             },
             BatchSize::SmallInput,
         );
     });
 }
 
-criterion_group!(buffdb, buffdb_insert, buffdb_insert_raw);
+criterion_group!(buffdb, sqlite_insert, sqlite_insert_raw);
 criterion_main!(buffdb);
