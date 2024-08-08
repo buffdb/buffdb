@@ -3,7 +3,7 @@ use crate::interop::{into_tonic_status, IntoTonicStatus};
 use crate::proto::query::{QueryResult, RawQuery, RowsChanged, TargetStore};
 use crate::queryable::Queryable;
 use crate::service::query::QueryRpc;
-use crate::{DynStream, RpcResponse, StreamingRequest};
+use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use futures::StreamExt as _;
 use tonic::{Response, Status};
@@ -20,13 +20,27 @@ impl<Backend> QueryHandler<Backend>
 where
     Backend: DatabaseBackend,
 {
-    // Deliberately not exposing an `at_location` and `in_memory` method for this struct, as it
-    // would require additional validation to ensure not more than one location is in memory.
+    /// Create a new query handler at the given locations. No initialization is performed.
+    ///
+    /// **Note**: At most one location can be in memory.
+    #[inline]
+    pub fn at_location(
+        kv_location: Location,
+        blob_location: Location,
+    ) -> Result<Self, Backend::Error> {
+        // TODO validate that both locations are not in memory
+        Ok(Self {
+            kv_backend: Backend::at_location(kv_location)?,
+            blob_backend: Backend::at_location(blob_location)?,
+        })
+    }
 
     /// Create a new query handler at the given paths on disk. No initialization is performed.
-    pub fn at_path<P>(kv_path: P, blob_path: P) -> Result<Self, Backend::Error>
+    #[inline]
+    pub fn at_path<P1, P2>(kv_path: P1, blob_path: P2) -> Result<Self, Backend::Error>
     where
-        P: Into<std::path::PathBuf>,
+        P1: Into<std::path::PathBuf>,
+        P2: Into<std::path::PathBuf>,
     {
         Ok(Self {
             kv_backend: Backend::at_location(kv_path.into().into())?,

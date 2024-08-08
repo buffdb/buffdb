@@ -15,8 +15,8 @@ use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use tonic::transport::{Channel, Endpoint, Server};
+use tonic::Status;
 
 const DUPLEX_SIZE: usize = 1024;
 
@@ -24,7 +24,7 @@ const DUPLEX_SIZE: usize = 1024;
 #[derive(Debug)]
 pub enum TransitiveError {
     /// An error from the server.
-    Status(tonic::Status),
+    Status(Status),
     /// An error from the transport layer.
     Transport(tonic::transport::Error),
 }
@@ -47,8 +47,8 @@ impl std::error::Error for TransitiveError {
     }
 }
 
-impl From<tonic::Status> for TransitiveError {
-    fn from(status: tonic::Status) -> Self {
+impl From<Status> for TransitiveError {
+    fn from(status: Status) -> Self {
         Self::Status(status)
     }
 }
@@ -170,8 +170,8 @@ pub async fn query_client<L1, L2, Backend>(
     blob_path: L2,
 ) -> Result<Transitive<QueryClient<Channel>>, TransitiveError>
 where
-    L1: Into<PathBuf> + Send,
-    L2: Into<PathBuf> + Send,
+    L1: Into<Location> + Send,
+    L2: Into<Location> + Send,
     Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
         + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
         + Send
@@ -179,12 +179,19 @@ where
         + 'static,
 {
     let (kv_path, blob_path) = (kv_path.into(), blob_path.into());
+    if matches!(kv_path, Location::InMemory) && matches!(blob_path, Location::InMemory) {
+        return Err(TransitiveError::Status(Status::internal(
+            "cannot use in-memory locations for both key-value and blob stores",
+        )));
+    }
+
     let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
     let _join_handle = tokio::spawn(async move {
         Server::builder()
             .add_service(QueryServer::new(
-                QueryHandler::<Backend>::at_path(kv_path, blob_path).map_err(into_tonic_status)?,
+                QueryHandler::<Backend>::at_location(kv_path, blob_path)
+                    .map_err(into_tonic_status)?,
             ))
             .serve_with_incoming(tokio_stream::once(Ok::<_, std::io::Error>(server)))
             .await?;

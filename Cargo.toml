@@ -62,7 +62,6 @@ criterion = { version = "0.5.1", features = [
     "async_tokio",
 ], git = "https://github.com/jhpratt/criterion.rs" } # needed until bheisler/criterion.rs#712 and bheisler/criterion.rs#803 are released
 rand = "0.8.5"
-rusqlite = "0.32.1"
 serial_test = "3.1.1"
 tokio = "1"
 
