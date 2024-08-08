@@ -21,6 +21,9 @@ codegen-units = 1
 opt-level = "z"
 panic = "abort"
 
+[profile.bench]
+opt-level = 3
+
 [[bin]]
 name = "buffdb"
 required-features = ["binary"]

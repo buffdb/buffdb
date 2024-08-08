@@ -13,15 +13,26 @@ use buffdb::{backend, transitive, Location};
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use futures::stream;
 use rand::distributions::{Alphanumeric, DistString};
+use rand::prelude::*;
 use std::iter;
-
-// TODO randomize the length of generated strings
 
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
-const DELETE_QUERIES_PER_BATCH: usize = 1_000;
+const DELETE_QUERIES_PER_BATCH: usize = 250;
 
 const PREFILL_ROW_COUNT: usize = 100_000;
+
+fn generate_key() -> String {
+    let mut rng = thread_rng();
+    let len = rng.gen_range(5..=25);
+    Alphanumeric.sample_string(&mut rng, len)
+}
+
+fn generate_value() -> String {
+    let mut rng = thread_rng();
+    let len = rng.gen_range(50..=1_000);
+    Alphanumeric.sample_string(&mut rng, len)
+}
 
 fn create_runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread()
@@ -44,10 +55,9 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
-    let mut rng = rand::rngs::OsRng;
     let requests: Vec<_> = iter::from_fn(|| {
-        let key = Alphanumeric.sample_string(&mut rng, 20);
-        let value = Alphanumeric.sample_string(&mut rng, 20);
+        let key = generate_key();
+        let value = generate_value();
         Some((
             RawQuery {
                 query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
@@ -83,11 +93,11 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
-    let mut rng = rand::rngs::OsRng;
     let requests: Vec<_> = iter::from_fn(|| {
-        let key = Alphanumeric.sample_string(&mut rng, 20);
-        let value = Alphanumeric.sample_string(&mut rng, 20);
-        Some(SetRequest { key, value })
+        Some(SetRequest {
+            key: generate_key(),
+            value: generate_value(),
+        })
     })
     .take(PREFILL_ROW_COUNT)
     .collect();
@@ -126,14 +136,13 @@ fn sqlite_insert_raw(c: &mut Criterion) {
             .unwrap();
         client
     });
-    let mut rng = rand::thread_rng();
 
     c.bench_function("sqlite_kv_insert_raw", |b| {
         b.to_async(&runtime).iter_batched(
             || {
                 let queries: Vec<_> = iter::from_fn(|| {
-                    let key = Alphanumeric.sample_string(&mut rng, 20);
-                    let value = Alphanumeric.sample_string(&mut rng, 20);
+                    let key = generate_key();
+                    let value = generate_value();
                     Some(RawQuery {
                         // No risk of SQL injection here as the values are known to be alphanumeric.
                         // Even if they weren't, it's a transitive in-memory database.
@@ -165,7 +174,6 @@ fn sqlite_insert(c: &mut Criterion) {
             .await
             .unwrap()
     });
-    let mut rng = rand::thread_rng();
 
     // Initializing the client before the first query should not be necessary, as it will be done
     // during the warmup phase.
@@ -174,8 +182,8 @@ fn sqlite_insert(c: &mut Criterion) {
         b.to_async(&runtime).iter_batched(
             || {
                 let requests: Vec<_> = iter::from_fn(|| {
-                    let key = Alphanumeric.sample_string(&mut rng, 20);
-                    let value = Alphanumeric.sample_string(&mut rng, 20);
+                    let key = generate_key();
+                    let value = generate_value();
                     Some(SetRequest { key, value })
                 })
                 .take(INSERT_QUERIES_PER_BATCH)
