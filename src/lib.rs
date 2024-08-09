@@ -32,6 +32,7 @@ mod kv;
 mod location;
 mod query;
 pub mod queryable;
+mod tracing_shim;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.

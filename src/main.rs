@@ -6,8 +6,10 @@
 compile_error!("at least one backend must be enabled (options are `duckdb` and `sqlite`)");
 
 mod cli;
+mod tracing_shim;
 
 use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
+use crate::tracing_shim::debug;
 #[cfg(feature = "duckdb")]
 use buffdb::backend::DuckDb;
 #[cfg(feature = "sqlite")]
@@ -40,7 +42,11 @@ impl std::fmt::Display for ErrStr {
 }
 
 fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
+    #[cfg(feature = "tracing")]
+    tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::default())?;
+
     let Args { backend, command } = Args::parse();
+    tracing_shim::trace!(?backend, ?command);
 
     let future = async {
         match backend {
@@ -75,7 +81,7 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 ///
 /// `kv_store` and `blob_store` cannot be the same location. This is enforced at runtime to a
 /// reasonable extent.
-// TODO two variants: queryable and non-queryable
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 async fn run<Backend>(
     RunArgs {
         kv_store,
@@ -85,7 +91,6 @@ async fn run<Backend>(
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
     Backend: DatabaseBackend<Error: IntoTonicStatus + std::error::Error>
-        // + Queryable<QueryStream: Send>
         + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
         + 'static,
@@ -115,9 +120,11 @@ where
         }
     }
 
+    debug!(?kv_store, ?blob_store, "creating stores");
     let kv_store = KvStore::<Backend>::at_path(kv_store)?;
     let blob_store = BlobStore::<Backend>::at_path(blob_store)?;
 
+    debug!("starting server");
     Server::builder()
         .add_service(KvServer::new(kv_store))
         .add_service(BlobServer::new(blob_store))
@@ -138,6 +145,7 @@ where
 ///
 /// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
 /// by a null byte (`\0`).
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 async fn kv<Backend>(
     KvArgs { store, command }: KvArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
@@ -212,6 +220,7 @@ where
 /// When storing a BLOB, the ID of the newly-created BLOB is written to stdout.
 ///
 /// Nothing is written to stdout for other operations.
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 async fn blob<Backend>(
     BlobArgs { store, command }: BlobArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
@@ -356,6 +365,7 @@ where
 }
 
 /// Given a path, read from stdin if the path is "-". Otherwise, read the file at that path.
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 async fn read_file_or_stdin(file_path: PathBuf) -> io::Result<Vec<u8>> {
     if file_path == PathBuf::from("-") {
         let mut bytes = Vec::new();

@@ -114,6 +114,7 @@ where
     ret
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_insert_raw(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -162,6 +163,7 @@ fn sqlite_insert_raw(c: &mut Criterion) {
     });
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_insert(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -198,6 +200,7 @@ fn sqlite_insert(c: &mut Criterion) {
     });
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_get_raw(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -231,6 +234,7 @@ fn sqlite_get_raw(c: &mut Criterion) {
     });
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_get(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -262,6 +266,7 @@ fn sqlite_get(c: &mut Criterion) {
     });
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_delete_raw(c: &mut Criterion) {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -312,6 +317,7 @@ fn sqlite_delete_raw(c: &mut Criterion) {
     });
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_delete(c: &mut Criterion) {
     let runtime = create_runtime();
 

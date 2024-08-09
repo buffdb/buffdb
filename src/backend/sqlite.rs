@@ -43,6 +43,7 @@ impl Queryable for Sqlite {
     type Connection = Connection;
     type QueryStream = DynStream<Result<query::QueryResult, Status>>;
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn query(query: String, connection: Connection) -> (Self::QueryStream, Connection) {
         // Needed until rust-lang/rust#128095 is resolved. At that point, `stream!` in combination
         // with `drop(statement);` can be used.`
@@ -90,6 +91,7 @@ impl Queryable for Sqlite {
         (Box::pin(stream), connection)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn execute(
         query: String,
         connection: Self::Connection,
@@ -117,6 +119,7 @@ impl KvBackend for Sqlite {
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
     type DeleteStream = DynStream<Result<kv::DeleteResponse, Status>>;
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
         let _res = connection.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
@@ -126,6 +129,7 @@ impl KvBackend for Sqlite {
         Ok(())
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
@@ -134,6 +138,7 @@ impl KvBackend for Sqlite {
         Ok(conn)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn get(&self, request: StreamingRequest<kv::GetRequest>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
@@ -150,6 +155,7 @@ impl KvBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn set(&self, request: StreamingRequest<kv::SetRequest>) -> RpcResponse<Self::SetStream> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
@@ -166,6 +172,7 @@ impl KvBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn delete(
         &self,
         request: StreamingRequest<kv::DeleteRequest>,
@@ -182,6 +189,7 @@ impl KvBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> RpcResponse<bool> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
@@ -199,6 +207,7 @@ impl KvBackend for Sqlite {
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn not_eq(&self, request: StreamingRequest<kv::NotEqRequest>) -> RpcResponse<bool> {
         let mut stream = request.into_inner();
         let db = self.connect_kv().map_err(into_tonic_status)?;
@@ -224,6 +233,7 @@ impl BlobBackend for Sqlite {
     type UpdateStream = DynStream<Result<blob::UpdateResponse, Status>>;
     type DeleteStream = DynStream<Result<blob::DeleteResponse, Status>>;
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS blob(
@@ -235,6 +245,7 @@ impl BlobBackend for Sqlite {
         Ok(())
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
@@ -243,6 +254,7 @@ impl BlobBackend for Sqlite {
         Ok(conn)
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn get(
         &self,
         request: StreamingRequest<blob::GetRequest>,
@@ -273,6 +285,7 @@ impl BlobBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn store(
         &self,
         request: StreamingRequest<blob::StoreRequest>,
@@ -295,6 +308,7 @@ impl BlobBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn update(
         &self,
         request: StreamingRequest<blob::UpdateRequest>,
@@ -337,6 +351,7 @@ impl BlobBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn delete(
         &self,
         request: StreamingRequest<blob::DeleteRequest>,
@@ -353,6 +368,7 @@ impl BlobBackend for Sqlite {
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn eq_data(&self, request: StreamingRequest<blob::EqDataRequest>) -> RpcResponse<bool> {
         let mut stream = request.into_inner();
         let db = self.connect_blob().map_err(into_tonic_status)?;
@@ -372,6 +388,7 @@ impl BlobBackend for Sqlite {
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn not_eq_data(
         &self,
         request: StreamingRequest<blob::NotEqDataRequest>,

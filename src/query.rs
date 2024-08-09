@@ -61,6 +61,7 @@ where
     type QueryStream = DynStream<Result<QueryResult, Status>>;
     type ExecuteStream = DynStream<Result<RowsChanged, Status>>;
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         let mut request = request.into_inner();
 
@@ -91,6 +92,7 @@ where
         Ok(Response::new(Box::pin(stream)))
     }
 
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn execute(
         &self,
         request: StreamingRequest<RawQuery>,

@@ -11,6 +11,7 @@ use crate::server::blob::BlobServer;
 use crate::server::kv::KvServer;
 use crate::server::query::QueryServer;
 use crate::store::{BlobStore, KvStore};
+use crate::tracing_shim::info;
 use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::fmt;
@@ -94,11 +95,12 @@ macro_rules! declare_clients {
         ///
         /// It is **not** guaranteed that the server spawned by this function will be shut down
         /// properly. This is a known issue and will be fixed in a future release.
+        #[cfg_attr(feature = "tracing", tracing::instrument)]
         pub async fn $fn_name<L, Backend>(
             location: L,
         ) -> Result<Transitive<$client<Channel>>, TransitiveError>
         where
-            L: Into<Location> + Send,
+            L: Into<Location> + Send + fmt::Debug,
             Backend: DatabaseBackend<Error: IntoTonicStatus>
                 + $backend<$($bounds)*>
                 + 'static
@@ -106,6 +108,7 @@ macro_rules! declare_clients {
             let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
+            info!(?location, "spawning transitive {}", stringify!($server));
             let _join_handle = tokio::spawn(async move {
                 Server::builder()
                     .add_service($server::new(
@@ -124,6 +127,7 @@ macro_rules! declare_clients {
                     let client = client.take();
                     async move {
                         if let Some(client) = client {
+                            info!("client is connected to transitive {}", stringify!($server));
                             Ok(TokioIo::new(client))
                         } else {
                             Err(std::io::Error::new(
@@ -165,13 +169,14 @@ declare_clients! {
 ///
 /// It is **not** guaranteed that the server spawned by this function will be shut down properly.
 /// This is a known issue and will be fixed in a future release.
+#[cfg_attr(feature = "tracing", tracing::instrument)]
 pub async fn query_client<L1, L2, Backend>(
     kv_path: L1,
     blob_path: L2,
 ) -> Result<Transitive<QueryClient<Channel>>, TransitiveError>
 where
-    L1: Into<Location> + Send,
-    L2: Into<Location> + Send,
+    L1: Into<Location> + Send + fmt::Debug,
+    L2: Into<Location> + Send + fmt::Debug,
     Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
         + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
         + Send
@@ -187,6 +192,7 @@ where
 
     let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
 
+    info!(?kv_path, ?blob_path, "spawning transitive QueryServer");
     let _join_handle = tokio::spawn(async move {
         Server::builder()
             .add_service(QueryServer::new(
@@ -204,6 +210,7 @@ where
             let client = client.take();
             async move {
                 if let Some(client) = client {
+                    info!("client is connected to transitive QueryServer");
                     Ok(TokioIo::new(client))
                 } else {
                     Err(std::io::Error::new(

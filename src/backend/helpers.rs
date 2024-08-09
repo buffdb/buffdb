@@ -2,6 +2,7 @@ use futures::{Stream, StreamExt as _};
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
 pub(super) async fn all_eq<S, T, E>(mut stream: S) -> Result<bool, E>
 where
     S: Stream<Item = Result<T, E>> + Unpin + Send,
@@ -25,6 +26,7 @@ where
     Ok(true)
 }
 
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
 pub(super) async fn all_not_eq<S, T, E>(mut stream: S) -> Result<bool, E>
 where
     S: Stream<Item = Result<T, E>> + Unpin + Send,

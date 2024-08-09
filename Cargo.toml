@@ -34,9 +34,13 @@ harness = false
 
 [features]
 default = ["vendored-duckdb", "vendored-sqlite"]
-binary = ["dep:clap"]
+binary = [
+    "dep:clap",
+    "dep:tracing-subscriber", # no way to make this contingent on tracing also being enabled
+]
 duckdb = ["dep:duckdb"]
 sqlite = ["dep:rusqlite"]
+tracing = ["dep:tracing"]
 vendored-duckdb = ["duckdb", "duckdb/bundled"]
 vendored-sqlite = ["sqlite", "rusqlite/bundled"]
 
@@ -55,6 +59,8 @@ tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tokio-stream = "0.1.15"
 tonic = "0.12.1"
 tower = "0.4.13"
+tracing = { version = "0.1.40", optional = true }
+tracing-subscriber = { version = "0.3.18", optional = true }
 
 [build-dependencies]
 tonic-build = "0.12.1"
