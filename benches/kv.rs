@@ -55,16 +55,16 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
-    let requests: Vec<_> = iter::from_fn(|| {
+    let requests: Vec<_> = iter::repeat_with(|| {
         let key = generate_key();
         let value = generate_value();
-        Some((
+        (
             RawQuery {
                 query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
                 target: TargetStore::Kv as _,
             },
             (key, value),
-        ))
+        )
     })
     .take(PREFILL_ROW_COUNT)
     .collect();
@@ -93,11 +93,9 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
-    let requests: Vec<_> = iter::from_fn(|| {
-        Some(SetRequest {
-            key: generate_key(),
-            value: generate_value(),
-        })
+    let requests: Vec<_> = iter::repeat_with(|| SetRequest {
+        key: generate_key(),
+        value: generate_value(),
     })
     .take(PREFILL_ROW_COUNT)
     .collect();
@@ -141,15 +139,15 @@ fn sqlite_insert_raw(c: &mut Criterion) {
     c.bench_function("sqlite_kv_insert_raw", |b| {
         b.to_async(&runtime).iter_batched(
             || {
-                let queries: Vec<_> = iter::from_fn(|| {
+                let queries: Vec<_> = iter::repeat_with(|| {
                     let key = generate_key();
                     let value = generate_value();
-                    Some(RawQuery {
+                    RawQuery {
                         // No risk of SQL injection here as the values are known to be alphanumeric.
                         // Even if they weren't, it's a transitive in-memory database.
                         query: format!("INSERT INTO kv (key, value) VALUES ('{key}', '{value}')"),
                         target: TargetStore::Kv as _,
-                    })
+                    }
                 })
                 .take(INSERT_QUERIES_PER_BATCH)
                 .collect();
@@ -165,11 +163,7 @@ fn sqlite_insert_raw(c: &mut Criterion) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_insert(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = create_runtime();
 
     let client = runtime.block_on(async {
         transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
@@ -183,10 +177,9 @@ fn sqlite_insert(c: &mut Criterion) {
     c.bench_function("sqlite_kv_insert", |b| {
         b.to_async(&runtime).iter_batched(
             || {
-                let requests: Vec<_> = iter::from_fn(|| {
-                    let key = generate_key();
-                    let value = generate_value();
-                    Some(SetRequest { key, value })
+                let requests: Vec<_> = iter::repeat_with(|| SetRequest {
+                    key: generate_key(),
+                    value: generate_value(),
                 })
                 .take(INSERT_QUERIES_PER_BATCH)
                 .collect();
@@ -202,11 +195,7 @@ fn sqlite_insert(c: &mut Criterion) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_get_raw(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = create_runtime();
 
     let (client, keys) = runtime.block_on(async {
         let mut client =
@@ -236,11 +225,7 @@ fn sqlite_get_raw(c: &mut Criterion) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_get(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = create_runtime();
 
     let (client, keys) = runtime.block_on(async {
         let mut client = transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
@@ -268,11 +253,7 @@ fn sqlite_get(c: &mut Criterion) {
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_delete_raw(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
+    let runtime = create_runtime();
 
     let (mut client, kv_pairs) = runtime.block_on(async {
         let mut client =
