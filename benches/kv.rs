@@ -169,6 +169,23 @@ where
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
+fn sqlite_connection_only<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
+    let runtime = create_runtime();
+    let (client, _) = runtime.block_on(create_kv_client::<backend::Sqlite, 0>());
+
+    c.bench_function("sqlite_connection_only", |b| {
+        b.to_async(&runtime).iter_batched(
+            || (stream::empty(), client.clone()),
+            |(queries, mut client)| async move { client.get(queries).await.unwrap() },
+            BatchSize::SmallInput,
+        );
+    });
+}
+
+#[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
 fn sqlite_insert_raw<M>(c: &mut Criterion<M>)
 where
     M: Measurement + 'static,
@@ -193,9 +210,7 @@ where
                 .collect();
                 (stream::iter(queries), client.clone())
             },
-            |(queries, mut client)| async move {
-                client.execute(queries).await.unwrap();
-            },
+            |(queries, mut client)| async move { client.execute(queries).await.unwrap() },
             BatchSize::SmallInput,
         );
     });
@@ -220,9 +235,7 @@ where
                 .collect();
                 (stream::iter(requests), client.clone())
             },
-            |(requests, mut client)| async move {
-                client.set(requests).await.unwrap();
-            },
+            |(requests, mut client)| async move { client.set(requests).await.unwrap() },
             BatchSize::SmallInput,
         );
     });
@@ -271,9 +284,7 @@ where
     c.bench_function("sqlite_kv_get", |b| {
         b.to_async(&runtime).iter_batched(
             || (stream::iter(keys.clone()), client.clone()),
-            |(keys, mut client)| async move {
-                client.get(keys).await.unwrap();
-            },
+            |(keys, mut client)| async move { client.get(keys).await.unwrap() },
             BatchSize::SmallInput,
         );
     });
@@ -310,9 +321,8 @@ where
                         target: TargetStore::Kv as _,
                     });
                 }
-                runtime.block_on(async {
-                    client.query(stream::iter(insert_queries)).await.unwrap();
-                });
+                runtime
+                    .block_on(async { client.query(stream::iter(insert_queries)).await.unwrap() });
 
                 (stream::iter(queries.clone()), client.clone())
             },
@@ -348,9 +358,7 @@ where
                 for (key, value) in kv_pairs.iter().cloned() {
                     insert_queries.push(SetRequest { key, value });
                 }
-                runtime.block_on(async {
-                    client.set(stream::iter(insert_queries)).await.unwrap();
-                });
+                runtime.block_on(async { client.set(stream::iter(insert_queries)).await.unwrap() });
 
                 (stream::iter(queries.clone()), client.clone())
             },
@@ -368,6 +376,7 @@ criterion_group!(
         .with_measurement(criterion_cycles_per_byte::CyclesPerByte)
         .measurement_time(Duration::from_secs(10));
     targets =
+        sqlite_connection_only,
         sqlite_insert,
         sqlite_insert_raw,
         sqlite_get,
