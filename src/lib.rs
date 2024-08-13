@@ -36,15 +36,8 @@ mod tracing_shim;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
-// We have no control over the generated code, so silence a handful of lints.
-#[allow(
-    unused_qualifications,
-    unreachable_pub,
-    unused_results,
-    clippy::future_not_send,
-    clippy::missing_const_for_fn,
-    clippy::unwrap_used
-)]
+// We have no control over the generated code, so silence anything non-critical.
+#[allow(warnings)]
 mod bindings {
     pub(crate) mod buffdb {
         pub(crate) mod blob {

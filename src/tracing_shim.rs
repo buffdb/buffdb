@@ -20,11 +20,11 @@ struct LevelInner;
 
 #[cfg(not(feature = "tracing"))]
 impl Level {
-    pub(crate) const TRACE: Level = Level(LevelInner);
-    pub(crate) const DEBUG: Level = Level(LevelInner);
-    pub(crate) const INFO: Level = Level(LevelInner);
-    pub(crate) const WARN: Level = Level(LevelInner);
-    pub(crate) const ERROR: Level = Level(LevelInner);
+    pub(crate) const TRACE: Self = Self(LevelInner);
+    pub(crate) const DEBUG: Self = Self(LevelInner);
+    pub(crate) const INFO: Self = Self(LevelInner);
+    pub(crate) const WARN: Self = Self(LevelInner);
+    pub(crate) const ERROR: Self = Self(LevelInner);
 }
 
 #[cfg(not(feature = "tracing"))]
