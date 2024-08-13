@@ -5,10 +5,14 @@
     clippy::unwrap_used
 )]
 
+use buffdb::backend::{DatabaseBackend, KvBackend};
 use buffdb::client::kv::KvClient;
 use buffdb::client::query::QueryClient;
+use buffdb::interop::IntoTonicStatus;
 use buffdb::proto::kv::{DeleteRequest, GetRequest, SetRequest};
 use buffdb::proto::query::{RawQuery, TargetStore};
+use buffdb::queryable::Queryable;
+use buffdb::transitive::Transitive;
 use buffdb::{backend, transitive, Location};
 use criterion::measurement::Measurement;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
@@ -44,10 +48,54 @@ fn create_runtime() -> tokio::runtime::Runtime {
         .unwrap()
 }
 
+async fn create_query_client<Backend, const RETURN_COUNT: usize>() -> (
+    Transitive<QueryClient<tonic::transport::Channel>>,
+    Vec<(String, String)>,
+)
+where
+    Backend: DatabaseBackend<Error: IntoTonicStatus + Send, Connection: Send>
+        + Queryable<QueryStream: Send, Connection = <Backend as DatabaseBackend>::Connection>
+        + Send
+        + Sync
+        + 'static,
+{
+    let mut client = transitive::query_client::<_, _, Backend>(Location::InMemory, "/dev/null")
+        .await
+        .unwrap();
+    client
+        .execute(stream::iter([RawQuery {
+            query: "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)".to_owned(),
+            target: TargetStore::Kv as _,
+        }]))
+        .await
+        .unwrap();
+    let contents = insert_rows_raw::<_, PREFILL_ROW_COUNT, RETURN_COUNT>(&mut client).await;
+    (client, contents)
+}
+
+async fn create_kv_client<Backend, const RETURN_COUNT: usize>() -> (
+    Transitive<KvClient<tonic::transport::Channel>>,
+    Vec<(String, String)>,
+)
+where
+    Backend: KvBackend<
+            Error: IntoTonicStatus + Send,
+            GetStream: Send,
+            SetStream: Send,
+            DeleteStream: Send,
+        > + 'static,
+{
+    let mut client = transitive::kv_client::<_, Backend>(Location::InMemory)
+        .await
+        .unwrap();
+    let contents = insert_rows::<_, PREFILL_ROW_COUNT, RETURN_COUNT>(&mut client).await;
+    (client, contents)
+}
+
 /// Insert a large number of rows into the database, returning `RETURN_COUNT` key-value pairs. All
 /// other pairs are effectively discarded, only being present in the database to ensure a real-world
 /// load.
-async fn prefill_rows_raw<T, const RETURN_COUNT: usize>(
+async fn insert_rows_raw<T, const INSERT_COUNT: usize, const RETURN_COUNT: usize>(
     conn: &mut QueryClient<T>,
 ) -> Vec<(String, String)>
 where
@@ -57,6 +105,11 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
+    assert!(
+        RETURN_COUNT <= INSERT_COUNT,
+        "cannot return {RETURN_COUNT} rows while inserting {INSERT_COUNT}"
+    );
+
     let requests: Vec<_> = iter::repeat_with(|| {
         let key = generate_key();
         let value = generate_value();
@@ -68,15 +121,14 @@ where
             (key, value),
         )
     })
-    .take(PREFILL_ROW_COUNT)
+    .take(INSERT_COUNT)
     .collect();
 
     let ret = requests
         .iter()
         .cloned()
         .map(|req| req.1)
-        .take(RETURN_COUNT)
-        .collect();
+        .choose_multiple(&mut thread_rng(), RETURN_COUNT);
 
     let requests = requests.into_iter().map(|(req, _)| req).collect::<Vec<_>>();
     conn.execute(stream::iter(requests)).await.unwrap();
@@ -84,10 +136,11 @@ where
     ret
 }
 
-/// Insert a large number of rows into the database, returning `RETURN_COUNT` key-value pairs. All
-/// other pairs are effectively discarded, only being present in the database to ensure a real-world
-/// load.
-async fn prefill_rows<T, const RETURN_COUNT: usize>(conn: &mut KvClient<T>) -> Vec<(String, String)>
+/// Insert a number of rows into the database, returning `RETURN_COUNT` key-value pairs. All other
+/// pairs are effectively discarded, only being present in the database to ensure a real-world load.
+async fn insert_rows<T, const INSERT_COUNT: usize, const RETURN_COUNT: usize>(
+    conn: &mut KvClient<T>,
+) -> Vec<(String, String)>
 where
     T: tonic::client::GrpcService<tonic::body::BoxBody, Future: Send> + Send,
     T::Error: Into<Box<dyn std::error::Error + Send + Sync + 'static>>,
@@ -95,23 +148,24 @@ where
     <T::ResponseBody as tonic::transport::Body>::Error:
         Into<Box<dyn std::error::Error + Send + Sync + 'static>> + Send,
 {
+    assert!(
+        RETURN_COUNT <= INSERT_COUNT,
+        "cannot return {RETURN_COUNT} rows while inserting {INSERT_COUNT}"
+    );
+
     let requests: Vec<_> = iter::repeat_with(|| SetRequest {
         key: generate_key(),
         value: generate_value(),
     })
-    .take(PREFILL_ROW_COUNT)
+    .take(INSERT_COUNT)
     .collect();
 
-    let ret = requests
-        .iter()
-        .cloned()
+    conn.set(stream::iter(requests.clone())).await.unwrap();
+
+    requests
+        .into_iter()
         .map(|req| (req.key, req.value))
-        .take(RETURN_COUNT)
-        .collect();
-
-    conn.set(stream::iter(requests)).await.unwrap();
-
-    ret
+        .choose_multiple(&mut thread_rng(), RETURN_COUNT)
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
@@ -120,22 +174,7 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-
-    let client = runtime.block_on(async {
-        let mut client =
-            transitive::query_client::<_, _, backend::Sqlite>(Location::InMemory, "/dev/null")
-                .await
-                .unwrap();
-        client
-            .execute(stream::iter([RawQuery {
-                query: "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)"
-                    .to_owned(),
-                target: TargetStore::Kv as _,
-            }]))
-            .await
-            .unwrap();
-        client
-    });
+    let (client, _) = runtime.block_on(create_query_client::<backend::Sqlite, 0>());
 
     c.bench_function("sqlite_kv_insert_raw", |b| {
         b.to_async(&runtime).iter_batched(
@@ -168,15 +207,7 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-
-    let client = runtime.block_on(async {
-        transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
-            .await
-            .unwrap()
-    });
-
-    // Initializing the client before the first query should not be necessary, as it will be done
-    // during the warmup phase.
+    let (client, _) = runtime.block_on(create_kv_client::<backend::Sqlite, 0>());
 
     c.bench_function("sqlite_kv_insert", |b| {
         b.to_async(&runtime).iter_batched(
@@ -203,17 +234,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
+    let (client, kv_pairs) =
+        runtime.block_on(create_query_client::<backend::Sqlite, GET_QUERIES_PER_BATCH>());
 
-    let (client, keys) = runtime.block_on(async {
-        let mut client =
-            transitive::query_client::<_, _, backend::Sqlite>(Location::InMemory, "/dev/null")
-                .await
-                .unwrap();
-        let keys = prefill_rows_raw::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
-        (client, keys)
-    });
-
-    let queries = keys
+    let queries = kv_pairs
         .into_iter()
         .map(|(key, _)| RawQuery {
             query: format!("SELECT (key, value) FROM kv WHERE key = '{key}'"),
@@ -236,16 +260,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
+    let (client, kv_pairs) =
+        runtime.block_on(create_kv_client::<backend::Sqlite, GET_QUERIES_PER_BATCH>());
 
-    let (client, keys) = runtime.block_on(async {
-        let mut client = transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
-            .await
-            .unwrap();
-        let keys = prefill_rows::<_, GET_QUERIES_PER_BATCH>(&mut client).await;
-        (client, keys)
-    });
-
-    let keys = keys
+    let keys = kv_pairs
         .into_iter()
         .map(|(key, _)| GetRequest { key })
         .collect::<Vec<_>>();
@@ -267,15 +285,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-
-    let (mut client, kv_pairs) = runtime.block_on(async {
-        let mut client =
-            transitive::query_client::<_, _, backend::Sqlite>(Location::InMemory, "/dev/null")
-                .await
-                .unwrap();
-        let keys = prefill_rows_raw::<_, DELETE_QUERIES_PER_BATCH>(&mut client).await;
-        (client, keys)
-    });
+    let (mut client, kv_pairs) = runtime.block_on(create_query_client::<
+        backend::Sqlite,
+        DELETE_QUERIES_PER_BATCH,
+    >());
 
     let queries = kv_pairs
         .iter()
@@ -317,20 +330,14 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
+    let (mut client, kv_pairs) =
+        runtime.block_on(create_kv_client::<backend::Sqlite, DELETE_QUERIES_PER_BATCH>());
 
-    let (mut client, kv_pairs) = runtime.block_on(async {
-        let mut client = transitive::kv_client::<_, backend::Sqlite>(Location::InMemory)
-            .await
-            .unwrap();
-        let keys = prefill_rows::<_, DELETE_QUERIES_PER_BATCH>(&mut client).await;
-        (client, keys)
-    });
-
-    let queries = kv_pairs
+    let queries: Vec<_> = kv_pairs
         .iter()
         .cloned()
         .map(|(key, _)| DeleteRequest { key })
-        .collect::<Vec<_>>();
+        .collect();
 
     c.bench_function("sqlite_kv_delete", |b| {
         b.iter_batched(

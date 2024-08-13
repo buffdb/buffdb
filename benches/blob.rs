@@ -22,9 +22,9 @@ use std::time::Duration;
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
 const UPDATE_QUERIES_PER_BATCH: usize = 1_000;
-const DELETE_QUERIES_PER_BATCH: usize = 1_000;
+const DELETE_QUERIES_PER_BATCH: usize = 250;
 
-const PREFILL_ROW_COUNT: usize = 1_000;
+const PREFILL_ROW_COUNT: usize = 10_000;
 
 fn generate_bytes() -> Vec<u8> {
     let mut rng = thread_rng();
@@ -90,7 +90,7 @@ fn create_runtime() -> tokio::runtime::Runtime {
         .unwrap()
 }
 
-async fn create_client<Backend, const RETURN_COUNT: usize>() -> (
+async fn create_blob_client<Backend, const RETURN_COUNT: usize>() -> (
     Transitive<BlobClient<tonic::transport::Channel>>,
     Vec<(u64, Vec<u8>, Option<String>)>,
 )
@@ -116,7 +116,7 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-    let (client, _) = runtime.block_on(create_client::<backend::Sqlite, 0>());
+    let (client, _) = runtime.block_on(create_blob_client::<backend::Sqlite, 0>());
 
     c.bench_function("sqlite_blob_insert", |b| {
         b.to_async(&runtime).iter_batched(
@@ -142,7 +142,7 @@ where
 {
     let runtime = create_runtime();
     let (client, contents) =
-        runtime.block_on(create_client::<backend::Sqlite, GET_QUERIES_PER_BATCH>());
+        runtime.block_on(create_blob_client::<backend::Sqlite, GET_QUERIES_PER_BATCH>());
     let ids: Vec<_> = contents
         .into_iter()
         .map(|(id, _, _)| GetRequest { id })
@@ -163,8 +163,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-    let (client, contents) =
-        runtime.block_on(create_client::<backend::Sqlite, UPDATE_QUERIES_PER_BATCH>());
+    let (client, contents) = runtime.block_on(create_blob_client::<
+        backend::Sqlite,
+        UPDATE_QUERIES_PER_BATCH,
+    >());
     let ids: Vec<_> = contents.into_iter().map(|(id, _, _)| id).collect();
 
     c.bench_function("sqlite_blob_update_data", |b| {
@@ -193,8 +195,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-    let (client, contents) =
-        runtime.block_on(create_client::<backend::Sqlite, UPDATE_QUERIES_PER_BATCH>());
+    let (client, contents) = runtime.block_on(create_blob_client::<
+        backend::Sqlite,
+        UPDATE_QUERIES_PER_BATCH,
+    >());
     let ids: Vec<_> = contents.into_iter().map(|(id, _, _)| id).collect();
 
     c.bench_function("sqlite_blob_update_metadata", |b| {
@@ -223,8 +227,10 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-    let (client, contents) =
-        runtime.block_on(create_client::<backend::Sqlite, UPDATE_QUERIES_PER_BATCH>());
+    let (client, contents) = runtime.block_on(create_blob_client::<
+        backend::Sqlite,
+        UPDATE_QUERIES_PER_BATCH,
+    >());
     let ids: Vec<_> = contents.into_iter().map(|(id, _, _)| id).collect();
 
     c.bench_function("sqlite_blob_update_both", |b| {
@@ -253,7 +259,7 @@ where
     M: Measurement + 'static,
 {
     let runtime = create_runtime();
-    let (client, _) = runtime.block_on(create_client::<backend::Sqlite, 0>());
+    let (client, _) = runtime.block_on(create_blob_client::<backend::Sqlite, 0>());
 
     c.bench_function("sqlite_blob_delete", |b| {
         b.iter_batched(
