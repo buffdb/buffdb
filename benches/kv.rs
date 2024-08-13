@@ -10,11 +10,13 @@ use buffdb::client::query::QueryClient;
 use buffdb::proto::kv::{DeleteRequest, GetRequest, SetRequest};
 use buffdb::proto::query::{RawQuery, TargetStore};
 use buffdb::{backend, transitive, Location};
+use criterion::measurement::Measurement;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use futures::stream;
 use rand::distributions::{Alphanumeric, DistString};
 use rand::prelude::*;
 use std::iter;
+use std::time::Duration;
 
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
@@ -113,12 +115,11 @@ where
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_insert_raw(c: &mut Criterion) {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap();
+fn sqlite_insert_raw<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
+    let runtime = create_runtime();
 
     let client = runtime.block_on(async {
         let mut client =
@@ -162,7 +163,10 @@ fn sqlite_insert_raw(c: &mut Criterion) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_insert(c: &mut Criterion) {
+fn sqlite_insert<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
     let runtime = create_runtime();
 
     let client = runtime.block_on(async {
@@ -194,7 +198,10 @@ fn sqlite_insert(c: &mut Criterion) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_get_raw(c: &mut Criterion) {
+fn sqlite_get_raw<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
     let runtime = create_runtime();
 
     let (client, keys) = runtime.block_on(async {
@@ -224,7 +231,10 @@ fn sqlite_get_raw(c: &mut Criterion) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_get(c: &mut Criterion) {
+fn sqlite_get<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
     let runtime = create_runtime();
 
     let (client, keys) = runtime.block_on(async {
@@ -252,7 +262,10 @@ fn sqlite_get(c: &mut Criterion) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_delete_raw(c: &mut Criterion) {
+fn sqlite_delete_raw<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
     let runtime = create_runtime();
 
     let (mut client, kv_pairs) = runtime.block_on(async {
@@ -299,7 +312,10 @@ fn sqlite_delete_raw(c: &mut Criterion) {
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(c)))]
-fn sqlite_delete(c: &mut Criterion) {
+fn sqlite_delete<M>(c: &mut Criterion<M>)
+where
+    M: Measurement + 'static,
+{
     let runtime = create_runtime();
 
     let (mut client, kv_pairs) = runtime.block_on(async {
@@ -340,12 +356,16 @@ fn sqlite_delete(c: &mut Criterion) {
 }
 
 criterion_group!(
-    buffdb,
-    sqlite_insert,
-    sqlite_insert_raw,
-    sqlite_get,
-    sqlite_get_raw,
-    sqlite_delete,
-    sqlite_delete_raw,
+    name = buffdb;
+    config = Criterion::default()
+        .with_measurement(criterion_cycles_per_byte::CyclesPerByte)
+        .measurement_time(Duration::from_secs(10));
+    targets =
+        sqlite_insert,
+        sqlite_insert_raw,
+        sqlite_get,
+        sqlite_get_raw,
+        sqlite_delete,
+        sqlite_delete_raw,
 );
 criterion_main!(buffdb);
