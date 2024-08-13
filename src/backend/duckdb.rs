@@ -6,6 +6,7 @@ use crate::duckdb_helper::{params2, params3};
 use crate::interop::into_tonic_status;
 use crate::proto::{blob, kv, query};
 use crate::queryable::Queryable;
+use crate::tracing_shim::{trace_span, Instrument};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use duckdb::Connection;
@@ -89,7 +90,8 @@ impl Queryable for DuckDb {
             while let Ok(result) = rx.recv() {
                 yield result;
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB raw query"));
 
         (Box::pin(stream), connection)
     }
@@ -157,7 +159,8 @@ impl KvBackend for DuckDb {
                         .expect("protobuf requires strings be valid UTF-8"),
                 });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB kv get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -174,7 +177,8 @@ impl KvBackend for DuckDb {
                 .map_err(into_tonic_status)?;
                 yield Ok(kv::SetResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB kv set query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -191,7 +195,8 @@ impl KvBackend for DuckDb {
                     .map_err(into_tonic_status)?;
                 yield Ok(kv::DeleteResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB kv delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -210,8 +215,8 @@ impl KvBackend for DuckDb {
                     String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
                 );
             }
-        }));
-
+        }))
+        .instrument(trace_span!("DuckDB kv eq query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -230,8 +235,8 @@ impl KvBackend for DuckDb {
                     String::from_utf8(value).expect("protobuf requires strings be valid UTF-8"),
                 );
             }
-        }));
-
+        }))
+        .instrument(trace_span!("DuckDB kv not_eq query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
@@ -293,7 +298,8 @@ impl BlobBackend for DuckDb {
                     metadata,
                 });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB blob get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -316,7 +322,8 @@ impl BlobBackend for DuckDb {
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::StoreResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB blob store query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -359,7 +366,8 @@ impl BlobBackend for DuckDb {
                 }
                 yield Ok(blob::UpdateResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB blob update query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -376,7 +384,8 @@ impl BlobBackend for DuckDb {
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::DeleteResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("DuckDB blob delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -395,8 +404,8 @@ impl BlobBackend for DuckDb {
 
                 yield Ok::<_, Status>(data);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("DuckDB blob eq_data query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -418,8 +427,8 @@ impl BlobBackend for DuckDb {
 
                 yield Ok::<_, Status>(data);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("DuckDB blob not_eq_data query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }

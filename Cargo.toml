@@ -44,7 +44,7 @@ binary = [
 ]
 duckdb = ["dep:duckdb"]
 sqlite = ["dep:rusqlite"]
-tracing = ["dep:tracing"]
+tracing = ["dep:tracing", "dep:tracing-futures"]
 vendored-duckdb = ["duckdb", "duckdb/bundled"]
 vendored-sqlite = ["sqlite", "rusqlite/bundled"]
 
@@ -64,6 +64,9 @@ tokio-stream = "0.1.15"
 tonic = "0.12.1"
 tower = "0.4.13"
 tracing = { version = "0.1.40", optional = true }
+tracing-futures = { version = "0.2.5", features = [
+    "futures-03",
+], optional = true }
 tracing-subscriber = { version = "0.3.18", optional = true }
 
 [build-dependencies]

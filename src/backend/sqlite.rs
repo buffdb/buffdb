@@ -3,6 +3,7 @@ use crate::conv::try_into_protobuf_any;
 use crate::interop::into_tonic_status;
 use crate::proto::{blob, kv, query};
 use crate::queryable::Queryable;
+use crate::tracing_shim::{trace_span, Instrument as _};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use rusqlite::Connection;
@@ -87,7 +88,8 @@ impl Queryable for Sqlite {
             while let Ok(result) = rx.recv() {
                 yield result;
             }
-        });
+        })
+        .instrument(trace_span!("SQLite raw query"));
         (Box::pin(stream), connection)
     }
 
@@ -151,7 +153,8 @@ impl KvBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok(kv::GetResponse { value });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite kv get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -168,7 +171,8 @@ impl KvBackend for Sqlite {
                 .map_err(into_tonic_status)?;
                 yield Ok(kv::SetResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite kv get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -185,7 +189,8 @@ impl KvBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok(kv::DeleteResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite kv delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -202,8 +207,8 @@ impl KvBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("SQLite kv eq query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -220,8 +225,8 @@ impl KvBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("SQLite kv not_eq query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
@@ -281,7 +286,8 @@ impl BlobBackend for Sqlite {
                     metadata,
                 });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite blob get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -304,7 +310,8 @@ impl BlobBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::StoreResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite blob store query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -347,7 +354,8 @@ impl BlobBackend for Sqlite {
                 }
                 yield Ok(blob::UpdateResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite blob update query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -364,7 +372,8 @@ impl BlobBackend for Sqlite {
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::DeleteResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("SQLite blob delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -383,8 +392,8 @@ impl BlobBackend for Sqlite {
 
                 yield Ok::<_, Status>(data);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("SQLite blob eq_data query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -406,8 +415,8 @@ impl BlobBackend for Sqlite {
 
                 yield Ok::<_, Status>(data);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("SQLite blob not_eq_data query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
