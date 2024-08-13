@@ -32,6 +32,10 @@ required-features = ["binary"]
 name = "kv"
 harness = false
 
+[[bench]]
+name = "blob"
+harness = false
+
 [features]
 default = ["vendored-duckdb", "vendored-sqlite"]
 binary = [
