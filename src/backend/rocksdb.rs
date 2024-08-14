@@ -1,6 +1,7 @@
 use crate::backend::{helpers, BlobBackend, DatabaseBackend, KvBackend};
 use crate::interop::into_tonic_status;
 use crate::proto::{blob, kv};
+use crate::tracing_shim::{trace_span, Instrument as _};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use rand::{Rng, SeedableRng};
@@ -40,6 +41,7 @@ impl DatabaseBackend for RocksDb {
 
     fn connect(&self) -> Result<Self::Connection, Self::Error> {
         match &self.location() {
+            #[allow(clippy::unimplemented)]
             Location::InMemory => unimplemented!(),
             Location::OnDisk { path } => {
                 let mut opts = rocksdb::Options::default();
@@ -59,10 +61,6 @@ impl KvBackend for RocksDb {
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
     type DeleteStream = DynStream<Result<kv::DeleteResponse, Status>>;
 
-    fn initialize(&self, _connection: &Self::Connection) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn get(&self, request: StreamingRequest<kv::GetRequest>) -> RpcResponse<Self::GetStream> {
         let mut stream = request.into_inner();
@@ -77,7 +75,8 @@ impl KvBackend for RocksDb {
                         .expect("protobuf requires strings be valid UTF-8"),
                 });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB kv get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -90,7 +89,8 @@ impl KvBackend for RocksDb {
                 db.put(&key, value.as_bytes()).map_err(into_tonic_status)?;
                 yield Ok(kv::SetResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB kv set query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -106,7 +106,8 @@ impl KvBackend for RocksDb {
                 db.delete(&key).map_err(into_tonic_status)?;
                 yield Ok(kv::DeleteResponse { key });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB kv delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -121,8 +122,8 @@ impl KvBackend for RocksDb {
                 };
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("RocksDB kv eq query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -137,8 +138,8 @@ impl KvBackend for RocksDb {
                 };
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("RocksDB kv not_eq query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }
@@ -150,10 +151,6 @@ impl BlobBackend for RocksDb {
     type UpdateStream = DynStream<Result<blob::UpdateResponse, Status>>;
     type DeleteStream = DynStream<Result<blob::DeleteResponse, Status>>;
 
-    fn initialize(&self, _connection: &Self::Connection) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn get(
         &self,
@@ -163,9 +160,10 @@ impl BlobBackend for RocksDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
         let stream = stream!({
+            let data_col = cf_handle!(db, "data")?;
+            let metadata_col = cf_handle!(db, "metadata")?;
+
             while let Some(blob::GetRequest { id }) = stream.message().await? {
-                let data_col = cf_handle!(db, "data")?;
-                let metadata_col = cf_handle!(db, "metadata")?;
                 let Some(data) = db
                     .get_cf(data_col, id.to_le_bytes())
                     .map_err(into_tonic_status)?
@@ -183,7 +181,8 @@ impl BlobBackend for RocksDb {
                     metadata,
                 });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB blob get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -196,22 +195,22 @@ impl BlobBackend for RocksDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
         let stream = stream!({
+            let data_col = cf_handle!(db, "data")?;
+            let metadata_col = cf_handle!(db, "metadata")?;
+
             while let Some(blob::StoreRequest { bytes, metadata }) = stream.message().await? {
                 let mut id = generate_id();
                 let mut id_bytes = id.to_le_bytes();
-                let data_col = cf_handle!(db, "data")?;
-                let metadata_col = cf_handle!(db, "metadata")?;
 
+                // Check for a collision of the generated identifier. If there is one, try once more
+                // before erroring. Note that there is a TOCTOU issue here, but the odds of any
+                // collision at all is so low that it is hardly worth worrying about that. If this
+                // somehow becomes a plausible issue, the ID can be extended to 128 bits from the
+                // current 64, rendering a collision all but impossible.
                 if matches!(db.get_cf(data_col, id_bytes), Ok(Some(_))) {
                     id = generate_id();
                     id_bytes = id.to_le_bytes();
 
-                    // Check for a collision of the generated identifier.
-                    // If there is one, try once more before erroring.
-                    // Note that there is a TOCTOU issue here, but the odds of
-                    // any collision at all is so low that it is hardly worth worrying about that.
-                    // If this somehow becomes a plausible issue, the ID can be extended to 128
-                    // bits from the current 64, rendering a collision all but impossible.
                     if matches!(db.get_cf(data_col, id_bytes), Ok(Some(_))) {
                         return Err(Status::internal("failed to generate unique id"))?;
                     }
@@ -231,7 +230,8 @@ impl BlobBackend for RocksDb {
                 txn.commit().map_err(into_tonic_status)?;
                 yield Ok(blob::StoreResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB blob get query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -244,6 +244,9 @@ impl BlobBackend for RocksDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
         let stream = stream!({
+            let data_col = cf_handle!(db, "data")?;
+            let metadata_col = cf_handle!(db, "metadata")?;
+
             while let Some(blob::UpdateRequest {
                 id,
                 bytes,
@@ -253,13 +256,11 @@ impl BlobBackend for RocksDb {
             {
                 let txn = db.transaction();
                 if let Some(bytes) = bytes {
-                    let data_col = cf_handle!(db, "data")?;
                     txn.put_cf(data_col, id.to_le_bytes(), &bytes)
                         .map_err(into_tonic_status)?;
                 }
 
                 if should_update_metadata {
-                    let metadata_col = cf_handle!(db, "metadata")?;
                     if let Some(metadata) = metadata {
                         txn.put_cf(metadata_col, id.to_le_bytes(), metadata)
                     } else {
@@ -270,7 +271,8 @@ impl BlobBackend for RocksDb {
                 txn.commit().map_err(into_tonic_status)?;
                 yield Ok(blob::UpdateResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB blob update query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -282,15 +284,17 @@ impl BlobBackend for RocksDb {
         let mut stream = request.into_inner();
         let db = self.connect_blob().map_err(into_tonic_status)?;
         let stream = stream!({
+            let data_col = cf_handle!(db, "data")?;
+            let metadata_col = cf_handle!(db, "metadata")?;
+
             while let Some(blob::DeleteRequest { id }) = stream.message().await? {
-                let data_col = cf_handle!(db, "data")?;
-                let metadata_col = cf_handle!(db, "metadata")?;
                 db.delete_cf(data_col, id.to_le_bytes())
                     .and_then(|_| db.delete_cf(metadata_col, id.to_le_bytes()))
                     .map_err(into_tonic_status)?;
                 yield Ok(blob::DeleteResponse { id });
             }
-        });
+        })
+        .instrument(trace_span!("RocksDB blob delete query"));
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -300,8 +304,9 @@ impl BlobBackend for RocksDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
         let stream = Box::pin(stream!({
+            let data_col = cf_handle!(db, "data")?;
+
             while let Some(blob::EqDataRequest { id }) = stream.message().await? {
-                let data_col = cf_handle!(db, "data")?;
                 let Some(value) = db
                     .get_cf(data_col, id.to_le_bytes())
                     .map_err(into_tonic_status)?
@@ -310,8 +315,8 @@ impl BlobBackend for RocksDb {
                 };
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("RocksDB blob eq_data query"));
         Ok(Response::new(helpers::all_eq(stream).await?))
     }
 
@@ -324,8 +329,9 @@ impl BlobBackend for RocksDb {
         let db = self.connect_blob().map_err(into_tonic_status)?;
 
         let stream = Box::pin(stream!({
+            let data_col = cf_handle!(db, "data")?;
+
             while let Some(blob::NotEqDataRequest { id }) = stream.message().await? {
-                let data_col = cf_handle!(db, "data")?;
                 let Some(value) = db
                     .get_cf(data_col, id.to_le_bytes())
                     .map_err(into_tonic_status)?
@@ -334,8 +340,8 @@ impl BlobBackend for RocksDb {
                 };
                 yield Ok::<_, Status>(value);
             }
-        }));
-
+        }))
+        .instrument(trace_span!("RocksDB blob not_eq_data query"));
         Ok(Response::new(helpers::all_not_eq(stream).await?))
     }
 }

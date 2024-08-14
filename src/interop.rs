@@ -157,7 +157,7 @@ impl IntoTonicStatus for rusqlite::Error {
 #[cfg(feature = "rocksdb")]
 impl IntoTonicStatus for rocksdb::Error {
     fn into_tonic_status(self) -> Status {
-        let message = Self::into_string(self.clone());
+        let message = self.clone().into_string();
         match self.kind() {
             rocksdb::ErrorKind::NotFound => Status::not_found(message),
             rocksdb::ErrorKind::Corruption => Status::data_loss(message),
@@ -172,7 +172,7 @@ impl IntoTonicStatus for rocksdb::Error {
             rocksdb::ErrorKind::Busy => Status::unavailable(message),
             rocksdb::ErrorKind::Expired => Status::deadline_exceeded(message),
             rocksdb::ErrorKind::TryAgain => Status::unavailable(message),
-            rocksdb::ErrorKind::CompactionTooLarge => Status::failed_precondition(message),
+            rocksdb::ErrorKind::CompactionTooLarge => Status::resource_exhausted(message),
             rocksdb::ErrorKind::ColumnFamilyDropped => Status::internal(message),
             rocksdb::ErrorKind::Unknown => Status::unknown(message),
         }
