@@ -3,7 +3,7 @@ syntax = "proto3";
 package buffdb.query;
 import 'google/protobuf/any.proto';
 
-/// The service definition for raw query operations.
+// The service definition for raw query operations.
 service Query {
   // Execute a query, returning the raw output.
   rpc Query(stream RawQuery) returns (stream QueryResult);

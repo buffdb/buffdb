@@ -158,7 +158,6 @@ declare_clients! {
         UpdateStream: Send,
         DeleteStream: Send,
     ];
-    // fn query_client<QueryClient, QueryServer, QueryHandler, QueryBackend>[];
 }
 
 /// Create a new client for the `QueryClient` service.

@@ -33,7 +33,7 @@ pub use self::duckdb::DuckDb;
 pub use self::rocksdb::RocksDb;
 #[cfg(feature = "sqlite")]
 pub use self::sqlite::Sqlite;
-use crate::proto::{blob, kv, query};
+use crate::proto::{blob, kv};
 use crate::{Location, RpcResponse, StreamingRequest};
 use futures::Stream;
 use tonic::async_trait;
@@ -57,27 +57,6 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
     /// the store as necessary. It is recommended to **not** call this method directly unless you
     /// are implementing a new backend.
     fn connect(&self) -> Result<Self::Connection, Self::Error>;
-}
-
-/// A backend that supports executing arbitrary queries.
-#[async_trait]
-pub trait QueryBackend: DatabaseBackend + Send + Sync {
-    /// A stream that is returned when a query is executed. Returns the result of the query.
-    type QueryStream: Stream<Item = Result<query::QueryResult, tonic::Status>>;
-    /// A stream that is returned when a query is executed. Returns the number of rows changed.
-    type ExecuteStream: Stream<Item = Result<query::RowsChanged, tonic::Status>>;
-
-    /// Execute the query and return the results.
-    async fn query(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> RpcResponse<Self::QueryStream>;
-
-    /// Execute the query and return the number of rows changed.
-    async fn execute(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> RpcResponse<Self::ExecuteStream>;
 }
 
 /// A backend that supports key-value operations.

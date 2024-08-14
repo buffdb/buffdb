@@ -1,11 +1,9 @@
 //! A key-value store.
 
-use crate::backend::{DatabaseBackend, KvBackend, QueryBackend};
+use crate::backend::{DatabaseBackend, KvBackend};
 use crate::interop::IntoTonicStatus;
 use crate::proto::kv::{DeleteRequest, EqRequest, GetRequest, NotEqRequest, SetRequest};
-use crate::proto::query::RawQuery;
 use crate::service::kv::KvRpc;
-use crate::service::query::QueryRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 
@@ -50,26 +48,6 @@ where
     #[inline]
     pub fn in_memory() -> Result<Self, Backend::Error> {
         Self::at_location(Location::InMemory)
-    }
-}
-
-#[tonic::async_trait]
-impl<Backend> QueryRpc for KvStore<Backend>
-where
-    Backend: QueryBackend<Error: IntoTonicStatus, QueryStream: Send, ExecuteStream: Send> + 'static,
-{
-    type QueryStream = Backend::QueryStream;
-    type ExecuteStream = Backend::ExecuteStream;
-
-    async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
-        self.backend.query(request).await
-    }
-
-    async fn execute(
-        &self,
-        request: StreamingRequest<RawQuery>,
-    ) -> RpcResponse<Self::ExecuteStream> {
-        self.backend.execute(request).await
     }
 }
 

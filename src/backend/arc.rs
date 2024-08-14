@@ -1,5 +1,5 @@
-use crate::backend::{BlobBackend, DatabaseBackend, KvBackend, QueryBackend};
-use crate::proto::{blob, kv, query};
+use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
+use crate::proto::{blob, kv};
 use crate::{Location, StreamingRequest};
 use std::sync::Arc;
 use tonic::async_trait;
@@ -21,29 +21,6 @@ where
 
     fn connect(&self) -> Result<Self::Connection, Self::Error> {
         self.as_ref().connect()
-    }
-}
-
-#[async_trait]
-impl<Backend> QueryBackend for Arc<Backend>
-where
-    Backend: QueryBackend,
-{
-    type QueryStream = Backend::QueryStream;
-    type ExecuteStream = Backend::ExecuteStream;
-
-    async fn query(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> crate::RpcResponse<Self::QueryStream> {
-        self.as_ref().query(request).await
-    }
-
-    async fn execute(
-        &self,
-        request: StreamingRequest<query::RawQuery>,
-    ) -> crate::RpcResponse<Self::ExecuteStream> {
-        self.as_ref().execute(request).await
     }
 }
 
