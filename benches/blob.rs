@@ -1,10 +1,4 @@
-#![allow(
-    missing_docs,
-    clippy::missing_docs_in_private_items,
-    unused_results,
-    clippy::unwrap_used
-)]
-
+use crate::create_runtime;
 use buffdb::backend::BlobBackend;
 use buffdb::client::blob::BlobClient;
 use buffdb::interop::IntoTonicStatus;
@@ -12,12 +6,11 @@ use buffdb::proto::blob::{DeleteRequest, GetRequest, StoreRequest, UpdateRequest
 use buffdb::transitive::Transitive;
 use buffdb::{backend, transitive, Location};
 use criterion::measurement::Measurement;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, BatchSize, Criterion};
 use futures::stream;
 use rand::distributions::{Alphanumeric, DistString};
 use rand::prelude::*;
 use std::iter;
-use std::time::Duration;
 
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
@@ -80,14 +73,6 @@ where
         .zip(requests.into_iter())
         .map(|(id, request)| (id, request.bytes, request.metadata))
         .choose_multiple(&mut thread_rng(), RETURN_COUNT)
-}
-
-fn create_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap()
 }
 
 async fn create_blob_client<Backend, const RETURN_COUNT: usize>() -> (
@@ -286,10 +271,8 @@ where
 }
 
 criterion_group! {
-    name = buffdb;
-    config = Criterion::default()
-        .with_measurement(criterion_cycles_per_byte::CyclesPerByte)
-        .measurement_time(Duration::from_secs(10));
+    name = blob;
+    config = super::criterion_config();
     targets =
         sqlite_insert,
         sqlite_get,
@@ -298,4 +281,3 @@ criterion_group! {
         sqlite_update_both,
         sqlite_delete,
 }
-criterion_main!(buffdb);

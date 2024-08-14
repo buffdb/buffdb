@@ -10,6 +10,7 @@ license = "MIT OR Apache-2.0"
 keywords = ["database", "storage", "embedded", "key-value", "blob"]
 categories = ["database-implementations", "embedded"]
 include = ["src/**/*", "LICENSE-*", "README.md", "proto/*", "build.rs"]
+autobenches = false
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -29,11 +30,8 @@ name = "buffdb"
 required-features = ["binary"]
 
 [[bench]]
-name = "kv"
-harness = false
-
-[[bench]]
-name = "blob"
+name = "benchmarks"
+path = "benches/main.rs"
 harness = false
 
 [features]

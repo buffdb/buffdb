@@ -1,10 +1,4 @@
-#![allow(
-    missing_docs,
-    clippy::missing_docs_in_private_items,
-    unused_results,
-    clippy::unwrap_used
-)]
-
+use crate::create_runtime;
 use buffdb::backend::{DatabaseBackend, KvBackend};
 use buffdb::client::kv::KvClient;
 use buffdb::client::query::QueryClient;
@@ -15,12 +9,11 @@ use buffdb::queryable::Queryable;
 use buffdb::transitive::Transitive;
 use buffdb::{backend, transitive, Location};
 use criterion::measurement::Measurement;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, BatchSize, Criterion};
 use futures::stream;
 use rand::distributions::{Alphanumeric, DistString};
 use rand::prelude::*;
 use std::iter;
-use std::time::Duration;
 
 const INSERT_QUERIES_PER_BATCH: usize = 1_000;
 const GET_QUERIES_PER_BATCH: usize = 1_000;
@@ -38,14 +31,6 @@ fn generate_value() -> String {
     let mut rng = thread_rng();
     let len = rng.gen_range(50..=1_000);
     Alphanumeric.sample_string(&mut rng, len)
-}
-
-fn create_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .enable_all()
-        .build()
-        .unwrap()
 }
 
 async fn create_query_client<Backend, const RETURN_COUNT: usize>() -> (
@@ -371,10 +356,8 @@ where
 }
 
 criterion_group!(
-    name = buffdb;
-    config = Criterion::default()
-        .with_measurement(criterion_cycles_per_byte::CyclesPerByte)
-        .measurement_time(Duration::from_secs(10));
+    name = kv;
+    config = super::criterion_config();
     targets =
         sqlite_connection_only,
         sqlite_insert,
@@ -384,4 +367,3 @@ criterion_group!(
         sqlite_delete,
         sqlite_delete_raw,
 );
-criterion_main!(buffdb);
