@@ -75,11 +75,11 @@ This example is present in `examples/typescript`. To run it, you need to have No
 
 ### Supported backends
 
-| Backend | Support status | Raw query support | Feature flag (vendored)      | CLI flag    |
-| ------- | -------------- | ----------------- | ---------------------------- | ----------- |
-| SQLite  | Full support   | ✅                | `sqlite` (`vendored-sqlite`) | `-b sqlite` |
-| DuckDB  | Partial        | ✅                | `duckdb` (`vendored-duckdb`) | `-b duckdb` |
-| RocksDB | Planned        | ❌                | N/A                          | N/A         |
+| Backend | Support status | Raw query support | Feature flag (vendored)      | CLI flag     |
+| ------- | -------------- | ----------------- | ---------------------------- | ------------ |
+| SQLite  | Full support   | ✅                | `sqlite` (`vendored-sqlite`) | `-b sqlite`  |
+| DuckDB  | Partial        | ✅                | `duckdb` (`vendored-duckdb`) | `-b duckdb`  |
+| RocksDB | Partial        | ❌                | (`vendored-rocksdb`) only    | `-b rocksdb` |
 
 Blockers for full DuckDB support include [duckdb/duckdb-rs#368](https://github.com/duckdb/duckdb-rs/issues/368),
 but other issues are necessary to have best performance.

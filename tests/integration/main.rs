@@ -30,6 +30,19 @@ mod duckdb {
     }
 }
 
+mod rocksdb {
+    type Backend = buffdb::backend::RocksDb;
+    const BLOB_PATH: &str = "blob_store.rocksdb-test.db";
+    const KV_PATH: &str = "kv_store.rocksdb-test.db";
+
+    mod blob {
+        include!("blob.rs");
+    }
+    mod kv {
+        include!("kv.rs");
+    }
+}
+
 mod helpers;
 
 #[cfg(rust_analyzer)]

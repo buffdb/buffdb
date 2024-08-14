@@ -6,6 +6,8 @@ mod arc;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod helpers;
+#[cfg(feature = "rocksdb")]
+mod rocksdb;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 
@@ -19,12 +21,16 @@ mod sealed {
     impl Sealed for DuckDb {}
     #[cfg(feature = "sqlite")]
     impl Sealed for Sqlite {}
+    #[cfg(feature = "rocksdb")]
+    impl Sealed for RocksDb {}
 
     impl<T> Sealed for Arc<T> {}
 }
 
 #[cfg(feature = "duckdb")]
 pub use self::duckdb::DuckDb;
+#[cfg(feature = "rocksdb")]
+pub use self::rocksdb::RocksDb;
 #[cfg(feature = "sqlite")]
 pub use self::sqlite::Sqlite;
 use crate::proto::{blob, kv, query};
@@ -85,7 +91,12 @@ pub trait KvBackend: DatabaseBackend + Send + Sync {
     type DeleteStream: Stream<Item = Result<kv::DeleteResponse, tonic::Status>>;
 
     /// Initialize the key-value store.
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error>;
+    fn initialize(
+        &self,
+        #[allow(unused_variables)] connection: &Self::Connection,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
 
     /// Connect to the key-value store, initializing it if necessary.
     fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
@@ -126,7 +137,12 @@ pub trait BlobBackend: DatabaseBackend + Send + Sync {
     type DeleteStream: Stream<Item = Result<blob::DeleteResponse, tonic::Status>>;
 
     /// Initialize the BLOB store.
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error>;
+    fn initialize(
+        &self,
+        #[allow(unused_variables)] connection: &Self::Connection,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
 
     /// Connect to the BLOB store, initializing it if necessary.
     fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {

@@ -35,7 +35,7 @@ path = "benches/main.rs"
 harness = false
 
 [features]
-default = ["vendored-duckdb", "vendored-sqlite"]
+default = ["vendored-duckdb", "vendored-sqlite", "vendored-rocksdb"]
 binary = [
     "dep:clap",
     "dep:tracing-subscriber", # no way to make this contingent on tracing also being enabled
@@ -45,6 +45,7 @@ sqlite = ["dep:rusqlite"]
 tracing = ["dep:tracing", "dep:tracing-futures"]
 vendored-duckdb = ["duckdb", "duckdb/bundled"]
 vendored-sqlite = ["sqlite", "rusqlite/bundled"]
+vendored-rocksdb = ["dep:rocksdb", "dep:rand"]
 
 [dependencies]
 async-stream = "0.3.5"
@@ -56,6 +57,11 @@ hyper-util = "0.1.6"
 prost = "0.13.1"
 prost-types = "0.13.1"
 rusqlite = { version = "0.32.1", optional = true }
+rocksdb = { package = "rust-rocksdb", version = "0.28.1", default-features = false, optional = true }
+rand = { version = "0.8.5", default-features = false, optional = true, features = [
+    "std",
+    "small_rng",
+] }
 sha2 = "0.10.8"
 tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tokio-stream = "0.1.15"
