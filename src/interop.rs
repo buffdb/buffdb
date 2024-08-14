@@ -154,6 +154,31 @@ impl IntoTonicStatus for rusqlite::Error {
     }
 }
 
+#[cfg(feature = "rocksdb")]
+impl IntoTonicStatus for rocksdb::Error {
+    fn into_tonic_status(self) -> Status {
+        let message = Self::into_string(self.clone());
+        match self.kind() {
+            rocksdb::ErrorKind::NotFound => Status::not_found(message),
+            rocksdb::ErrorKind::Corruption => Status::data_loss(message),
+            rocksdb::ErrorKind::NotSupported => Status::unimplemented(message),
+            rocksdb::ErrorKind::InvalidArgument => Status::invalid_argument(message),
+            rocksdb::ErrorKind::IOError => Status::internal(message),
+            rocksdb::ErrorKind::MergeInProgress => Status::aborted(message),
+            rocksdb::ErrorKind::Incomplete => Status::internal(message),
+            rocksdb::ErrorKind::ShutdownInProgress => Status::unavailable(message),
+            rocksdb::ErrorKind::TimedOut => Status::deadline_exceeded(message),
+            rocksdb::ErrorKind::Aborted => Status::aborted(message),
+            rocksdb::ErrorKind::Busy => Status::unavailable(message),
+            rocksdb::ErrorKind::Expired => Status::deadline_exceeded(message),
+            rocksdb::ErrorKind::TryAgain => Status::unavailable(message),
+            rocksdb::ErrorKind::CompactionTooLarge => Status::failed_precondition(message),
+            rocksdb::ErrorKind::ColumnFamilyDropped => Status::internal(message),
+            rocksdb::ErrorKind::Unknown => Status::unknown(message),
+        }
+    }
+}
+
 impl IntoTonicStatus for prost::UnknownEnumValue {
     fn into_tonic_status(self) -> Status {
         Status::invalid_argument(format!("unknown enumeration value {}", self.0))

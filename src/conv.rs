@@ -6,6 +6,7 @@ use prost_types::*;
 #[cfg(feature = "duckdb")]
 use std::collections::BTreeMap;
 
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 pub(crate) fn try_into_protobuf_any<T>(value: T) -> Result<Any, Unsupported>
 where
     T: TryIntoProtobufAny,
@@ -13,6 +14,7 @@ where
     value.try_into_protobuf_any()
 }
 
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 pub(crate) trait TryIntoProtobufAny {
     fn try_into_protobuf_any(self) -> Result<Any, Unsupported>;
 }

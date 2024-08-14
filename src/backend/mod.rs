@@ -6,6 +6,8 @@ mod arc;
 #[cfg(feature = "duckdb")]
 mod duckdb;
 mod helpers;
+#[cfg(feature = "rocksdb")]
+mod rocksdb;
 #[cfg(feature = "sqlite")]
 mod sqlite;
 
@@ -19,12 +21,16 @@ mod sealed {
     impl Sealed for DuckDb {}
     #[cfg(feature = "sqlite")]
     impl Sealed for Sqlite {}
+    #[cfg(feature = "rocksdb")]
+    impl Sealed for RocksDb {}
 
     impl<T> Sealed for Arc<T> {}
 }
 
 #[cfg(feature = "duckdb")]
 pub use self::duckdb::DuckDb;
+#[cfg(feature = "rocksdb")]
+pub use self::rocksdb::RocksDb;
 #[cfg(feature = "sqlite")]
 pub use self::sqlite::Sqlite;
 use crate::proto::{blob, kv, query};

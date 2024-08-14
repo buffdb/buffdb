@@ -14,5 +14,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             &["proto"],
         )?;
+    println!("cargo::rustc-check-cfg=cfg(feature, values(\"rocksdb\"))");
+    if cfg!(feature = "vendored-rocksdb") {
+        println!("cargo::rustc-cfg=feature=\"rocksdb\"");
+    }
     Ok(())
 }
