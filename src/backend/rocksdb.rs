@@ -4,7 +4,7 @@ use crate::proto::{blob, kv};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use rand::{Rng, SeedableRng};
-use rocksdb::DB;
+use rocksdb::TransactionDB;
 use tonic::{async_trait, Response, Status};
 
 /// A backend utilizing RocksDb.
@@ -27,7 +27,7 @@ macro_rules! cf_handle {
 }
 
 impl DatabaseBackend for RocksDb {
-    type Connection = DB;
+    type Connection = TransactionDB;
     type Error = rocksdb::Error;
 
     fn at_location(location: Location) -> Result<Self, Self::Error> {
@@ -45,8 +45,9 @@ impl DatabaseBackend for RocksDb {
                 let mut opts = rocksdb::Options::default();
                 opts.create_if_missing(true);
                 opts.create_missing_column_families(true);
+                let txn_opts = rocksdb::TransactionDBOptions::default();
                 let fields = vec!["data", "metadata"];
-                Self::Connection::open_cf(&opts, path, fields)
+                Self::Connection::open_cf(&opts, &txn_opts, path, fields)
             }
         }
     }
@@ -216,14 +217,18 @@ impl BlobBackend for RocksDb {
                     }
                 };
 
-                let data_res = db.put_cf(data_col, id_bytes, bytes);
-                let metadata_res = if let Some(metadata) = metadata {
-                    db.put_cf(metadata_col, id_bytes, metadata)
+                let txn = db.transaction();
+                txn.put_cf(data_col, id_bytes, bytes)
+                    .map_err(into_tonic_status)?;
+
+                if let Some(metadata) = metadata {
+                    txn.put_cf(metadata_col, id_bytes, metadata)
                 } else {
                     Ok(())
-                };
+                }
+                .map_err(into_tonic_status)?;
 
-                data_res.and(metadata_res).map_err(into_tonic_status)?;
+                txn.commit().map_err(into_tonic_status)?;
                 yield Ok(blob::StoreResponse { id });
             }
         });
@@ -246,21 +251,23 @@ impl BlobBackend for RocksDb {
                 metadata,
             }) = stream.message().await?
             {
+                let txn = db.transaction();
                 if let Some(bytes) = bytes {
                     let data_col = cf_handle!(db, "data")?;
-                    db.put_cf(data_col, id.to_le_bytes(), &bytes)
+                    txn.put_cf(data_col, id.to_le_bytes(), &bytes)
                         .map_err(into_tonic_status)?;
                 }
 
                 if should_update_metadata {
                     let metadata_col = cf_handle!(db, "metadata")?;
                     if let Some(metadata) = metadata {
-                        db.put_cf(metadata_col, id.to_le_bytes(), metadata)
+                        txn.put_cf(metadata_col, id.to_le_bytes(), metadata)
                     } else {
-                        db.delete_cf(metadata_col, id.to_le_bytes())
+                        txn.delete_cf(metadata_col, id.to_le_bytes())
                     }
                     .map_err(into_tonic_status)?;
                 }
+                txn.commit().map_err(into_tonic_status)?;
                 yield Ok(blob::UpdateResponse { id });
             }
         });
