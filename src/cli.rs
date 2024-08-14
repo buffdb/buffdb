@@ -18,6 +18,10 @@ pub(crate) enum Backend {
     #[cfg(feature = "sqlite")]
     #[allow(clippy::missing_docs_in_private_items)]
     Sqlite,
+    #[cfg(feature = "rocksdb")]
+    #[clap(name = "rocksdb")]
+    #[allow(clippy::missing_docs_in_private_items)]
+    RocksDb,
 }
 
 impl Default for Backend {
@@ -27,6 +31,8 @@ impl Default for Backend {
         return Self::Sqlite;
         #[cfg(feature = "duckdb")]
         return Self::DuckDb;
+        #[cfg(feature = "rocksdb")]
+        return Self::RocksDb;
 
         unreachable!()
     }
