@@ -83,6 +83,8 @@ criterion-cycles-per-byte = "0.6.1"
 rand = "0.8.5"
 serial_test = "3.1.1"
 tokio = "1"
+tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+tracing-timing = "0.6.0"
 
 [lints.rust]
 ambiguous-glob-reexports = "deny"

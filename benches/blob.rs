@@ -17,7 +17,7 @@ const GET_QUERIES_PER_BATCH: usize = 1_000;
 const UPDATE_QUERIES_PER_BATCH: usize = 1_000;
 const DELETE_QUERIES_PER_BATCH: usize = 250;
 
-const PREFILL_ROW_COUNT: usize = 10_000;
+const PREFILL_ROW_COUNT: usize = 1_000;
 
 fn generate_bytes() -> Vec<u8> {
     let mut rng = thread_rng();
