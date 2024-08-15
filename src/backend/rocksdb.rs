@@ -6,7 +6,7 @@ use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use rand::{Rng, SeedableRng};
 use rocksdb::TransactionDB;
-use tonic::{async_trait, Response, Status};
+use tonic::{Response, Status};
 
 /// A backend utilizing RocksDb.
 #[derive(Debug)]
@@ -55,7 +55,6 @@ impl DatabaseBackend for RocksDb {
     }
 }
 
-#[async_trait]
 impl KvBackend for RocksDb {
     type GetStream = DynStream<Result<kv::GetResponse, Status>>;
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
@@ -144,7 +143,6 @@ impl KvBackend for RocksDb {
     }
 }
 
-#[async_trait]
 impl BlobBackend for RocksDb {
     type GetStream = DynStream<Result<blob::GetResponse, Status>>;
     type StoreStream = DynStream<Result<blob::StoreResponse, Status>>;

@@ -33,10 +33,10 @@ pub use self::duckdb::DuckDb;
 pub use self::rocksdb::RocksDb;
 #[cfg(feature = "sqlite")]
 pub use self::sqlite::Sqlite;
+use crate::internal_macros::future_send;
 use crate::proto::{blob, kv};
 use crate::{Location, RpcResponse, StreamingRequest};
 use futures::Stream;
-use tonic::async_trait;
 
 /// A backend for a database, permitting connections to be established at a given location.
 pub trait DatabaseBackend: sealed::Sealed + Sized {
@@ -60,7 +60,6 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
 }
 
 /// A backend that supports key-value operations.
-#[async_trait]
 pub trait KvBackend: DatabaseBackend + Send + Sync {
     /// A stream for the response to a `get` command.
     type GetStream: Stream<Item = Result<kv::GetResponse, tonic::Status>>;
@@ -85,26 +84,34 @@ pub trait KvBackend: DatabaseBackend + Send + Sync {
     }
 
     /// Get the value associated with the given key.
-    async fn get(&self, request: StreamingRequest<kv::GetRequest>) -> RpcResponse<Self::GetStream>;
+    fn get(
+        &self,
+        request: StreamingRequest<kv::GetRequest>,
+    ) -> future_send!(RpcResponse<Self::GetStream>);
 
     /// Insert or update a key-value pair.
-    async fn set(&self, request: StreamingRequest<kv::SetRequest>) -> RpcResponse<Self::SetStream>;
+    fn set(
+        &self,
+        request: StreamingRequest<kv::SetRequest>,
+    ) -> future_send!(RpcResponse<Self::SetStream>);
 
     /// Delete the key-value pair associated with the given key.
-    async fn delete(
+    fn delete(
         &self,
         request: StreamingRequest<kv::DeleteRequest>,
-    ) -> RpcResponse<Self::DeleteStream>;
+    ) -> future_send!(RpcResponse<Self::DeleteStream>);
 
     /// Determine if all provided keys have the same value.
-    async fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> RpcResponse<bool>;
+    fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> future_send!(RpcResponse<bool>);
 
     /// Determine if all provided keys have different values.
-    async fn not_eq(&self, request: StreamingRequest<kv::NotEqRequest>) -> RpcResponse<bool>;
+    fn not_eq(
+        &self,
+        request: StreamingRequest<kv::NotEqRequest>,
+    ) -> future_send!(RpcResponse<bool>);
 }
 
 /// A backend that supports BLOB operations.
-#[async_trait]
 pub trait BlobBackend: DatabaseBackend + Send + Sync {
     /// A stream for the response to a `get` command.
     type GetStream: Stream<Item = Result<blob::GetResponse, tonic::Status>>;
@@ -131,35 +138,38 @@ pub trait BlobBackend: DatabaseBackend + Send + Sync {
     }
 
     /// Get the BLOB and associated metadata given the ID.
-    async fn get(
+    fn get(
         &self,
         request: StreamingRequest<blob::GetRequest>,
-    ) -> RpcResponse<Self::GetStream>;
+    ) -> future_send!(RpcResponse<Self::GetStream>);
 
     /// Store a BLOB and associated metadata, returning the ID.
-    async fn store(
+    fn store(
         &self,
         request: StreamingRequest<blob::StoreRequest>,
-    ) -> RpcResponse<Self::StoreStream>;
+    ) -> future_send!(RpcResponse<Self::StoreStream>);
 
     /// Update the BLOB and/or its associated metadata.
-    async fn update(
+    fn update(
         &self,
         request: StreamingRequest<blob::UpdateRequest>,
-    ) -> RpcResponse<Self::UpdateStream>;
+    ) -> future_send!(RpcResponse<Self::UpdateStream>);
 
     /// Delete the BLOB and associated metadata given the ID.
-    async fn delete(
+    fn delete(
         &self,
         request: StreamingRequest<blob::DeleteRequest>,
-    ) -> RpcResponse<Self::DeleteStream>;
+    ) -> future_send!(RpcResponse<Self::DeleteStream>);
 
     /// Determine if all provided IDs have the same data. Metadata is not considered.
-    async fn eq_data(&self, request: StreamingRequest<blob::EqDataRequest>) -> RpcResponse<bool>;
+    fn eq_data(
+        &self,
+        request: StreamingRequest<blob::EqDataRequest>,
+    ) -> future_send!(RpcResponse<bool>);
 
     /// Determine if all provided IDs have different data. Metadata is not considered.
-    async fn not_eq_data(
+    fn not_eq_data(
         &self,
         request: StreamingRequest<blob::NotEqDataRequest>,
-    ) -> RpcResponse<bool>;
+    ) -> future_send!(RpcResponse<bool>);
 }

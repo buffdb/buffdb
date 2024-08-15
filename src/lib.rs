@@ -26,11 +26,13 @@ pub mod backend;
 mod conv;
 #[cfg(feature = "duckdb")]
 mod duckdb_helper;
-// TODO does this need to be public?
+pub mod frontend;
 pub mod handler;
+mod internal_macros;
 pub mod interop;
 mod location;
 pub mod queryable;
+pub mod structs;
 mod tracing_shim;
 pub mod transitive;
 

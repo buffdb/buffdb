@@ -7,18 +7,18 @@ use crate::service::kv::KvRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 
-/// A key-value handler.
+/// A key-value store.
 ///
-/// This is a key-value handler where both the key and value are strings. There are no restrictions
-/// on the length or contents of either the key or value beyond restrictions implemented by the
+/// This is a key-value store where both the key and value are strings. There are no restrictions on
+/// the length or contents of either the key or value beyond restrictions implemented by the
 /// frontend.
 #[must_use]
 #[derive(Debug)]
-pub struct KvHandler<Backend> {
+pub struct KvStore<Backend> {
     backend: Backend,
 }
 
-impl<Backend> KvHandler<Backend>
+impl<Backend> KvStore<Backend>
 where
     Backend: DatabaseBackend,
 {
@@ -51,8 +51,9 @@ where
     }
 }
 
+// TODO Remove this implementation, replacing it with a blanket implementation over `T: KvHandlerTrait`.
 #[tonic::async_trait]
-impl<Backend> KvRpc for KvHandler<Backend>
+impl<Backend> KvRpc for KvStore<Backend>
 where
     Backend: KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
         + 'static,

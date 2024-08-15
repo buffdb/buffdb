@@ -2,7 +2,6 @@ use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::proto::{blob, kv};
 use crate::{Location, StreamingRequest};
 use std::sync::Arc;
-use tonic::async_trait;
 
 impl<Backend> DatabaseBackend for Arc<Backend>
 where
@@ -24,7 +23,6 @@ where
     }
 }
 
-#[async_trait]
 impl<Backend> KvBackend for Arc<Backend>
 where
     Backend: KvBackend,
@@ -70,7 +68,6 @@ where
     }
 }
 
-#[async_trait]
 impl<Backend> BlobBackend for Arc<Backend>
 where
     Backend: BlobBackend,

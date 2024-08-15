@@ -8,7 +8,7 @@ use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use rusqlite::Connection;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tonic::{async_trait, Response, Status};
+use tonic::{Response, Status};
 
 /// A backend utilizing SQLite.
 #[derive(Debug)]
@@ -115,7 +115,6 @@ impl Queryable for Sqlite {
     }
 }
 
-#[async_trait]
 impl KvBackend for Sqlite {
     type GetStream = DynStream<Result<kv::GetResponse, Status>>;
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
@@ -231,7 +230,6 @@ impl KvBackend for Sqlite {
     }
 }
 
-#[async_trait]
 impl BlobBackend for Sqlite {
     type GetStream = DynStream<Result<blob::GetResponse, Status>>;
     type StoreStream = DynStream<Result<blob::StoreResponse, Status>>;

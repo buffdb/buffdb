@@ -16,11 +16,11 @@ use std::path::PathBuf;
 /// unique.
 #[must_use]
 #[derive(Debug)]
-pub struct BlobHandler<Backend> {
+pub struct BlobStore<Backend> {
     backend: Backend,
 }
 
-impl<Backend> BlobHandler<Backend>
+impl<Backend> BlobStore<Backend>
 where
     Backend: DatabaseBackend,
 {
@@ -53,8 +53,9 @@ where
     }
 }
 
+// TODO Remove this implementation, replacing it with a blanket implementation over `T: BlobHandlerTrait`.
 #[tonic::async_trait]
-impl<Backend> BlobRpc for BlobHandler<Backend>
+impl<Backend> BlobRpc for BlobStore<Backend>
 where
     Backend: BlobBackend<
             Error: IntoTonicStatus,

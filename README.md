@@ -203,12 +203,53 @@ performance penalty, but our goal is to eventually be faster than any other embe
     fieldwork, airline, collaborative documents, etc.).
 - IoT: For managing device configurations and states locally before syncing with cloud servers.
 
-## Terminology
+## Inner functionality
 
-- A **store** is a database for a specific type of data. Currently, there are two stores (key-value
-  and BLOB).
+### Terminology
+
+- A **store** is the developer-facing API for a database. Currently, there are two stores (key-value
+  and BLOB). All stores support all backends.
 - A **backend** is the underlying storage engine for a store. Currently, there are three backends
   (SQLite, DuckDB, and RocksDB).
 - A **frontend** is the interface between the store and the client. Currently, there is one frontend
   (gRPC).
-- A **handler** accepts requests from the frontend and interacts with the backend to fulfill them.
+- A **handler** accepts requests from the frontend and interacts with the relevant store to fulfill
+  them.
+
+### Diagram
+
+```mermaid
+flowchart LR
+    subgraph frontend
+        gRPC
+    end
+    subgraph handler
+        kv-handler[key-value handler]
+        query-handler[raw query handler]
+        blob-handler[BLOB handler]
+    end
+    subgraph store
+        kv-backend
+        blob-backend
+    end
+    subgraph backend
+        SQLite
+        DuckDB
+        RocksDB
+    end
+
+    frontend --> handler
+    store --> backend
+
+    kv-handler --> kv-backend[key-value store]
+    query-handler --> kv-backend & blob-backend
+    blob-handler --> blob-backend[BLOB store]
+```
+
+### Adding a new frontend
+
+TODO
+
+### Adding a new backend
+
+TODO

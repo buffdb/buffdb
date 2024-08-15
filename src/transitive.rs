@@ -4,7 +4,7 @@ use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;
 use crate::client::query::QueryClient;
-use crate::handler::{BlobHandler, KvHandler, QueryHandler};
+use crate::handler::{BlobStore, KvStore, QueryHandler};
 use crate::interop::{into_tonic_status, IntoTonicStatus};
 use crate::queryable::Queryable;
 use crate::server::blob::BlobServer;
@@ -146,12 +146,12 @@ macro_rules! declare_clients {
 }
 
 declare_clients! {
-    fn kv_client<KvClient, KvServer, KvHandler, KvBackend>[
+    fn kv_client<KvClient, KvServer, KvStore, KvBackend>[
         GetStream: Send,
         SetStream: Send,
         DeleteStream: Send,
     ];
-    fn blob_client<BlobClient, BlobServer, BlobHandler, BlobBackend>[
+    fn blob_client<BlobClient, BlobServer, BlobStore, BlobBackend>[
         GetStream: Send,
         StoreStream: Send,
         UpdateStream: Send,

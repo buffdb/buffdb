@@ -10,7 +10,7 @@ use crate::tracing_shim::{trace_span, Instrument};
 use crate::{DynStream, Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
 use duckdb::Connection;
-use tonic::{async_trait, Response, Status};
+use tonic::{Response, Status};
 
 /// A backend utilizing DuckDB.
 #[derive(Debug)]
@@ -118,7 +118,6 @@ impl Queryable for DuckDb {
     }
 }
 
-#[async_trait]
 impl KvBackend for DuckDb {
     type GetStream = DynStream<Result<kv::GetResponse, Status>>;
     type SetStream = DynStream<Result<kv::SetResponse, Status>>;
@@ -241,7 +240,6 @@ impl KvBackend for DuckDb {
     }
 }
 
-#[async_trait]
 impl BlobBackend for DuckDb {
     type GetStream = DynStream<Result<blob::GetResponse, Status>>;
     type StoreStream = DynStream<Result<blob::StoreResponse, Status>>;
