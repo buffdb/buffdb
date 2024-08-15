@@ -4,13 +4,12 @@ use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;
 use crate::client::query::QueryClient;
+use crate::handler::{BlobHandler, KvHandler, QueryHandler};
 use crate::interop::{into_tonic_status, IntoTonicStatus};
-use crate::query::QueryHandler;
 use crate::queryable::Queryable;
 use crate::server::blob::BlobServer;
 use crate::server::kv::KvServer;
 use crate::server::query::QueryServer;
-use crate::store::{BlobStore, KvStore};
 use crate::tracing_shim::info;
 use crate::Location;
 use hyper_util::rt::TokioIo;
@@ -147,12 +146,12 @@ macro_rules! declare_clients {
 }
 
 declare_clients! {
-    fn kv_client<KvClient, KvServer, KvStore, KvBackend>[
+    fn kv_client<KvClient, KvServer, KvHandler, KvBackend>[
         GetStream: Send,
         SetStream: Send,
         DeleteStream: Send,
     ];
-    fn blob_client<BlobClient, BlobServer, BlobStore, BlobBackend>[
+    fn blob_client<BlobClient, BlobServer, BlobHandler, BlobBackend>[
         GetStream: Send,
         StoreStream: Send,
         UpdateStream: Send,

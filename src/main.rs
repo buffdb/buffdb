@@ -19,11 +19,11 @@ use buffdb::backend::RocksDb;
 #[cfg(feature = "sqlite")]
 use buffdb::backend::Sqlite;
 use buffdb::backend::{BlobBackend, DatabaseBackend, KvBackend};
+use buffdb::handler::{BlobHandler, KvHandler};
 use buffdb::interop::IntoTonicStatus;
 use buffdb::proto::{blob, kv};
 use buffdb::server::blob::BlobServer;
 use buffdb::server::kv::KvServer;
-use buffdb::store::{BlobStore, KvStore};
 use buffdb::transitive;
 use clap::Parser as _;
 use futures::{stream, StreamExt};
@@ -131,8 +131,8 @@ where
     }
 
     debug!(?kv_store, ?blob_store, "creating stores");
-    let kv_store = KvStore::<Backend>::at_path(kv_store)?;
-    let blob_store = BlobStore::<Backend>::at_path(blob_store)?;
+    let kv_store = KvHandler::<Backend>::at_path(kv_store)?;
+    let blob_store = BlobHandler::<Backend>::at_path(blob_store)?;
 
     debug!("starting server");
     Server::builder()

@@ -23,14 +23,13 @@
 #![allow(clippy::missing_docs_in_private_items)]
 
 pub mod backend;
-mod blob;
 mod conv;
 #[cfg(feature = "duckdb")]
 mod duckdb_helper;
+// TODO does this need to be public?
+pub mod handler;
 pub mod interop;
-mod kv;
 mod location;
-mod query;
 pub mod queryable;
 mod tracing_shim;
 pub mod transitive;
@@ -120,13 +119,6 @@ pub mod service {
     pub mod query {
         pub use crate::bindings::buffdb::query::query_server::Query as QueryRpc;
     }
-}
-
-/// Store implementations.
-pub mod store {
-    pub use crate::blob::BlobStore;
-    pub use crate::kv::KvStore;
-    pub use crate::query::QueryHandler;
 }
 
 pub use crate::location::Location;

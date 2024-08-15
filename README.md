@@ -202,3 +202,13 @@ performance penalty, but our goal is to eventually be faster than any other embe
 - Offline Data Access: For apps that need to function offline (e.g., note-taking apps, games,
     fieldwork, airline, collaborative documents, etc.).
 - IoT: For managing device configurations and states locally before syncing with cloud servers.
+
+## Terminology
+
+- A **store** is a database for a specific type of data. Currently, there are two stores (key-value
+  and BLOB).
+- A **backend** is the underlying storage engine for a store. Currently, there are three backends
+  (SQLite, DuckDB, and RocksDB).
+- A **frontend** is the interface between the store and the client. Currently, there is one frontend
+  (gRPC).
+- A **handler** accepts requests from the frontend and interacts with the backend to fulfill them.

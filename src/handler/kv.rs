@@ -1,4 +1,4 @@
-//! A key-value store.
+//! A key-value handler.
 
 use crate::backend::{DatabaseBackend, KvBackend};
 use crate::interop::IntoTonicStatus;
@@ -7,18 +7,18 @@ use crate::service::kv::KvRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 
-/// A key-value store.
+/// A key-value handler.
 ///
-/// This is a key-value store where both the key and value are strings. There are no restrictions on
-/// the length or contents of either the key or value beyond restrictions implemented by the
-/// protobuf server.
+/// This is a key-value handler where both the key and value are strings. There are no restrictions
+/// on the length or contents of either the key or value beyond restrictions implemented by the
+/// frontend.
 #[must_use]
 #[derive(Debug)]
-pub struct KvStore<Backend> {
+pub struct KvHandler<Backend> {
     backend: Backend,
 }
 
-impl<Backend> KvStore<Backend>
+impl<Backend> KvHandler<Backend>
 where
     Backend: DatabaseBackend,
 {
@@ -52,7 +52,7 @@ where
 }
 
 #[tonic::async_trait]
-impl<Backend> KvRpc for KvStore<Backend>
+impl<Backend> KvRpc for KvHandler<Backend>
 where
     Backend: KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
         + 'static,

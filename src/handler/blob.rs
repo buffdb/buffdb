@@ -1,4 +1,4 @@
-//! A store for binary large objects (BLOBs) with an optional metadata field.
+//! A handler for binary large objects (BLOBs) with an optional metadata field.
 
 use crate::backend::{BlobBackend, DatabaseBackend};
 use crate::interop::IntoTonicStatus;
@@ -9,18 +9,18 @@ use crate::service::blob::BlobRpc;
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 
-/// A store for binary large objects (BLOBs) with an optional metadata field.
+/// A handler for binary large objects (BLOBs) with an optional metadata field.
 ///
-/// Metadata, if stored, is a string that can be used to store any additional information about the
+/// Metadata, if present, is a string that can be used to store any additional information about the
 /// BLOB, such as a description or a name. Neither the BLOB or the metadata are required to be
 /// unique.
 #[must_use]
 #[derive(Debug)]
-pub struct BlobStore<Backend> {
+pub struct BlobHandler<Backend> {
     backend: Backend,
 }
 
-impl<Backend> BlobStore<Backend>
+impl<Backend> BlobHandler<Backend>
 where
     Backend: DatabaseBackend,
 {
@@ -54,7 +54,7 @@ where
 }
 
 #[tonic::async_trait]
-impl<Backend> BlobRpc for BlobStore<Backend>
+impl<Backend> BlobRpc for BlobHandler<Backend>
 where
     Backend: BlobBackend<
             Error: IntoTonicStatus,
