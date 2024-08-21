@@ -5,7 +5,8 @@ pub struct GetRequest {
 
 #[derive(Debug)]
 pub struct GetResponse {
-    pub value: String,
+    pub data: Vec<u8>,
+    pub metadata: Option<String>,
 }
 
 #[derive(Debug)]

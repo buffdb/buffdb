@@ -1,5 +1,3 @@
-use std::any::Any;
-
 #[non_exhaustive]
 #[derive(Debug)]
 pub enum TargetStore {
@@ -14,9 +12,8 @@ pub struct RawQuery {
 }
 
 #[derive(Debug)]
-pub struct QueryResponse {
-    // TODO get a better type than Any, possibly varying by frontend
-    pub fields: Vec<Box<dyn Any>>,
+pub struct QueryResponse<T> {
+    pub fields: Vec<T>,
 }
 
 #[derive(Debug)]

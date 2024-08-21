@@ -129,5 +129,3 @@ pub use prost_types;
 /// A response from a gRPC server.
 pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 type StreamingRequest<T> = tonic::Request<tonic::Streaming<T>>;
-#[cfg(any(feature = "duckdb", feature = "sqlite", feature = "rocksdb"))]
-type DynStream<T> = std::pin::Pin<Box<dyn futures::Stream<Item = T> + Send + 'static>>;

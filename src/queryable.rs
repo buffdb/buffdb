@@ -1,17 +1,17 @@
 //! A database that supports raw query execution.
 
-use crate::proto::query::{QueryResult, RowsChanged};
+use crate::backend::DatabaseBackend;
+use crate::structs::query::{ExecuteResponse, QueryResponse};
 use futures::Stream;
 use std::future::Future;
-use tonic::Status;
 
 /// A trait for types that can execute raw queries.
-pub trait Queryable {
-    /// The type of a connection to the database.
-    type Connection;
-
+pub trait Queryable<FrontendError>: DatabaseBackend {
     /// The type of a stream containing the query results.
-    type QueryStream: Stream<Item = Result<QueryResult, Status>> + Unpin;
+    type QueryStream: Stream<Item = Result<QueryResponse<Self::Any>, FrontendError>> + Unpin;
+
+    /// The type of a single field in a query result.
+    type Any;
 
     /// Execute a query and return a stream of results.
     ///
@@ -27,5 +27,5 @@ pub trait Queryable {
     fn execute(
         query: String,
         conn: Self::Connection,
-    ) -> impl Future<Output = (Result<RowsChanged, Status>, Self::Connection)> + Send;
+    ) -> impl Future<Output = (Result<ExecuteResponse, FrontendError>, Self::Connection)> + Send;
 }

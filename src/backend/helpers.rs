@@ -1,13 +1,15 @@
 use futures::{Stream, StreamExt as _};
 use sha2::{Digest as _, Sha256};
 use std::collections::BTreeSet;
+use std::pin::pin;
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
-pub(super) async fn all_eq<S, T, E>(mut stream: S) -> Result<bool, E>
+pub(super) async fn all_eq<S, T, E>(stream: S) -> Result<bool, E>
 where
-    S: Stream<Item = Result<T, E>> + Unpin + Send,
+    S: Stream<Item = Result<T, E>> + Send,
     T: AsRef<[u8]> + Send,
 {
+    let mut stream = pin!(stream);
     let value = match stream.next().await {
         Some(Ok(bytes)) => bytes,
         Some(Err(err)) => return Err(err),
@@ -27,11 +29,12 @@ where
 }
 
 #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
-pub(super) async fn all_not_eq<S, T, E>(mut stream: S) -> Result<bool, E>
+pub(super) async fn all_not_eq<S, T, E>(stream: S) -> Result<bool, E>
 where
-    S: Stream<Item = Result<T, E>> + Unpin + Send,
+    S: Stream<Item = Result<T, E>> + Send,
     T: AsRef<[u8]>,
 {
+    let mut stream = pin!(stream);
     let mut unique_values = BTreeSet::new();
 
     while let Some(value) = stream.next().await {

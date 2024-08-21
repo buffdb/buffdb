@@ -53,7 +53,7 @@ message GetRequest {
 // Response containing the data and metadata of a BLOB.
 message GetResponse {
   // The binary data of the BLOB.
-  bytes bytes = 1;
+  bytes data = 1;
   // The metadata of the BLOB.
   optional string metadata = 2;
 }
@@ -61,7 +61,7 @@ message GetResponse {
 // Request to store a new BLOB.
 message StoreRequest {
   // The binary data of the BLOB.
-  bytes bytes = 1;
+  bytes data = 1;
   // The metadata of the BLOB.
   optional string metadata = 2;
 }
@@ -77,7 +77,7 @@ message UpdateRequest {
   // The ID of the BLOB to update.
   uint64 id = 1;
   // The updated binary data of the BLOB.
-  optional bytes bytes = 2;
+  optional bytes data = 2;
   // Whether to update the metadata.
   bool should_update_metadata = 3;
   // The updated metadata of the BLOB. Ignored if should_update_metadata is false.

@@ -1,5 +1,7 @@
 //! A temporary client for a data store.
 
+// TODO rework to be generic over the frontend, if even possible
+
 use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;

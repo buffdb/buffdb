@@ -1,14 +1,14 @@
 use crate::backend::{helpers, BlobBackend, DatabaseBackend, KvBackend};
-use crate::conv::try_into_protobuf_any;
-use crate::interop::into_tonic_status;
-use crate::proto::{blob, kv, query};
+use crate::interop::DatabaseError;
 use crate::queryable::Queryable;
+use crate::structs::{blob, kv, query};
 use crate::tracing_shim::{trace_span, Instrument as _};
-use crate::{DynStream, Location, RpcResponse, StreamingRequest};
+use crate::Location;
 use async_stream::stream;
+use futures::stream::BoxStream;
+use futures::{Stream, StreamExt as _};
 use rusqlite::Connection;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tonic::{Response, Status};
 
 /// A backend utilizing SQLite.
 #[derive(Debug)]
@@ -40,9 +40,12 @@ impl DatabaseBackend for Sqlite {
     }
 }
 
-impl Queryable for Sqlite {
-    type Connection = Connection;
-    type QueryStream = DynStream<Result<query::QueryResult, Status>>;
+impl<FrontendError> Queryable<FrontendError> for Sqlite
+where
+    FrontendError: From<DatabaseError<Self::Error>> + Send + 'static,
+{
+    type QueryStream = BoxStream<'static, Result<query::QueryResponse<Self::Any>, FrontendError>>;
+    type Any = rusqlite::types::Value;
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
     async fn query(query: String, connection: Connection) -> (Self::QueryStream, Connection) {
@@ -57,30 +60,23 @@ impl Queryable for Sqlite {
                         let column_count = row.as_ref().column_count();
                         let mut values = Vec::with_capacity(column_count);
                         for i in 0..column_count {
-                            match row
-                                .get::<_, rusqlite::types::Value>(i)
-                                .map(try_into_protobuf_any)
-                            {
-                                Ok(Ok(value)) => values.push(value),
-                                Ok(Err(err)) => {
-                                    let _res = tx.send(Err(into_tonic_status(err)));
-                                    break;
-                                }
+                            match row.get::<_, rusqlite::types::Value>(i) {
+                                Ok(value) => values.push(value),
                                 Err(err) => {
-                                    let _res = tx.send(Err(into_tonic_status(err)));
+                                    let _res = tx.send(Err(DatabaseError(err).into()));
                                     break;
                                 }
                             }
                         }
-                        let _res = tx.send(Ok(query::QueryResult { fields: values }));
+                        let _res = tx.send(Ok(query::QueryResponse { fields: values }));
                     }
                 }
                 Err(err) => {
-                    let _res = tx.send(Err(into_tonic_status(err)));
+                    let _res = tx.send(Err(DatabaseError(err).into()));
                 }
             },
             Err(err) => {
-                let _res = tx.send(Err(into_tonic_status(err)));
+                let _res = tx.send(Err(DatabaseError(err).into()));
             }
         };
 
@@ -97,31 +93,34 @@ impl Queryable for Sqlite {
     async fn execute(
         query: String,
         connection: Self::Connection,
-    ) -> (Result<query::RowsChanged, Status>, Connection) {
+    ) -> (Result<query::ExecuteResponse, FrontendError>, Connection) {
         match connection
             .prepare(&query)
             .and_then(|mut statement| statement.execute([]))
         {
             Ok(rows_changed) => (
-                Ok(query::RowsChanged {
+                Ok(query::ExecuteResponse {
                     rows_changed: rows_changed
                         .try_into()
                         .expect("more than 10^19 rows altered"),
                 }),
                 connection,
             ),
-            Err(err) => (Err(into_tonic_status(err)), connection),
+            Err(err) => (Err(DatabaseError(err).into()), connection),
         }
     }
 }
 
-impl KvBackend for Sqlite {
-    type GetStream = DynStream<Result<kv::GetResponse, Status>>;
-    type SetStream = DynStream<Result<kv::SetResponse, Status>>;
-    type DeleteStream = DynStream<Result<kv::DeleteResponse, Status>>;
+impl<FrontendError> KvBackend<FrontendError> for Sqlite
+where
+    FrontendError: From<DatabaseError<Self::Error>> + Send + 'static,
+{
+    type GetStream = BoxStream<'static, Result<kv::GetResponse, FrontendError>>;
+    type SetStream = BoxStream<'static, Result<kv::SetResponse, FrontendError>>;
+    type DeleteStream = BoxStream<'static, Result<kv::DeleteResponse, FrontendError>>;
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), FrontendError> {
         let _res = connection.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
             [],
@@ -131,113 +130,148 @@ impl KvBackend for Sqlite {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_kv(&self) -> Result<Self::Connection, FrontendError> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
-            KvBackend::initialize(self, &conn)?;
+            KvBackend::<FrontendError>::initialize(self, &conn)?;
         }
         Ok(conn)
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn get(&self, request: StreamingRequest<kv::GetRequest>) -> RpcResponse<Self::GetStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_kv().map_err(into_tonic_status)?;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(request)))]
+    async fn get<Req>(&self, mut request: Req) -> Result<Self::GetStream, FrontendError>
+    where
+        Req: Stream<Item = Result<kv::GetRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_kv()?;
         let stream = stream!({
-            while let Some(kv::GetRequest { key }) = stream.message().await? {
-                let value = db
-                    .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
-                        row.get(0)
-                    })
-                    .map_err(into_tonic_status)?;
-                yield Ok(kv::GetResponse { value });
+            while let Some(request) = request.next().await {
+                match request {
+                    Ok(kv::GetRequest { key }) => {
+                        let value = db
+                            .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                                row.get(0)
+                            })
+                            .map_err(DatabaseError)?;
+                        yield Ok(kv::GetResponse { value });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
         .instrument(trace_span!("SQLite kv get query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn set(&self, request: StreamingRequest<kv::SetRequest>) -> RpcResponse<Self::SetStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_kv().map_err(into_tonic_status)?;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn set<Req>(&self, mut stream: Req) -> Result<Self::SetStream, FrontendError>
+    where
+        Req: Stream<Item = Result<kv::SetRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_kv()?;
         let stream = stream!({
-            while let Some(kv::SetRequest { key, value }) = stream.message().await? {
-                db.execute(
-                    "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)",
-                    [&key, &value],
-                )
-                .map_err(into_tonic_status)?;
-                yield Ok(kv::SetResponse { key });
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(kv::SetRequest { key, value }) => {
+                        db.execute(
+                            "INSERT OR REPLACE INTO kv (key, value) VALUES (?, ?)",
+                            [&key, &value],
+                        )
+                        .map_err(DatabaseError)?;
+                        yield Ok(kv::SetResponse { key });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
         .instrument(trace_span!("SQLite kv get query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn delete(
-        &self,
-        request: StreamingRequest<kv::DeleteRequest>,
-    ) -> RpcResponse<Self::DeleteStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_kv().map_err(into_tonic_status)?;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn delete<Req>(&self, mut stream: Req) -> Result<Self::DeleteStream, FrontendError>
+    where
+        Req: Stream<Item = Result<kv::DeleteRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_kv()?;
         let stream = stream!({
-            while let Some(kv::DeleteRequest { key }) = stream.message().await? {
-                db.execute("DELETE FROM kv WHERE key = ?", [&key])
-                    .map_err(into_tonic_status)?;
-                yield Ok(kv::DeleteResponse { key });
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(kv::DeleteRequest { key }) => {
+                        db.execute("DELETE FROM kv WHERE key = ?", [&key])
+                            .map_err(DatabaseError)?;
+                        yield Ok(kv::DeleteResponse { key });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
         .instrument(trace_span!("SQLite kv delete query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> RpcResponse<bool> {
-        let mut stream = request.into_inner();
-        let db = self.connect_kv().map_err(into_tonic_status)?;
-        let stream = Box::pin(stream!({
-            while let Some(kv::EqRequest { key }) = stream.message().await? {
-                let value = db
-                    .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
-                        row.get::<_, String>(0)
-                    })
-                    .map_err(into_tonic_status)?;
-                yield Ok::<_, Status>(value);
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn eq<Req>(&self, mut stream: Req) -> Result<bool, FrontendError>
+    where
+        Req: Stream<Item = Result<kv::EqRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_kv()?;
+        let stream = stream!({
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(kv::EqRequest { key }) => {
+                        let value = db
+                            .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                                row.get::<_, String>(0)
+                            })
+                            .map_err(DatabaseError)?;
+                        yield Ok(value);
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
-        }))
+        })
         .instrument(trace_span!("SQLite kv eq query"));
-        Ok(Response::new(helpers::all_eq(stream).await?))
+        helpers::all_eq(Box::pin(stream)).await
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn not_eq(&self, request: StreamingRequest<kv::NotEqRequest>) -> RpcResponse<bool> {
-        let mut stream = request.into_inner();
-        let db = self.connect_kv().map_err(into_tonic_status)?;
-        let stream = Box::pin(stream!({
-            while let Some(kv::NotEqRequest { key }) = stream.message().await? {
-                let value = db
-                    .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
-                        row.get::<_, String>(0)
-                    })
-                    .map_err(into_tonic_status)?;
-                yield Ok::<_, Status>(value);
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn not_eq<Req>(&self, mut stream: Req) -> Result<bool, FrontendError>
+    where
+        Req: Stream<Item = Result<kv::NotEqRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_kv()?;
+        let stream = stream!({
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(kv::NotEqRequest { key }) => {
+                        let value = db
+                            .query_row("SELECT value FROM kv WHERE key = ?", [&key], |row| {
+                                row.get::<_, String>(0)
+                            })
+                            .map_err(DatabaseError)?;
+                        yield Ok(value);
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
-        }))
+        })
         .instrument(trace_span!("SQLite kv not_eq query"));
-        Ok(Response::new(helpers::all_not_eq(stream).await?))
+        helpers::all_not_eq(Box::pin(stream)).await
     }
 }
 
-impl BlobBackend for Sqlite {
-    type GetStream = DynStream<Result<blob::GetResponse, Status>>;
-    type StoreStream = DynStream<Result<blob::StoreResponse, Status>>;
-    type UpdateStream = DynStream<Result<blob::UpdateResponse, Status>>;
-    type DeleteStream = DynStream<Result<blob::DeleteResponse, Status>>;
+impl<FrontendError> BlobBackend<FrontendError> for Sqlite
+where
+    FrontendError: From<DatabaseError<Self::Error>> + Send + 'static,
+{
+    type GetStream = BoxStream<'static, Result<blob::GetResponse, FrontendError>>;
+    type StoreStream = BoxStream<'static, Result<blob::StoreResponse, FrontendError>>;
+    type UpdateStream = BoxStream<'static, Result<blob::UpdateResponse, FrontendError>>;
+    type DeleteStream = BoxStream<'static, Result<blob::DeleteResponse, FrontendError>>;
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), FrontendError> {
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS blob(
                 data BLOB,
@@ -249,7 +283,7 @@ impl BlobBackend for Sqlite {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_blob(&self) -> Result<Self::Connection, FrontendError> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
             BlobBackend::initialize(self, &conn)?;
@@ -257,164 +291,190 @@ impl BlobBackend for Sqlite {
         Ok(conn)
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn get(
-        &self,
-        request: StreamingRequest<blob::GetRequest>,
-    ) -> RpcResponse<Self::GetStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
-
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn get<Req>(&self, mut stream: Req) -> Result<Self::GetStream, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::GetRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
         let stream = stream!({
-            while let Some(blob::GetRequest { id }) = stream.message().await? {
-                let (data, metadata) = db
-                    .query_row(
-                        "SELECT data, metadata FROM blob WHERE rowid = ?",
-                        [id],
-                        |row| {
-                            let data: Vec<u8> = row.get(0)?;
-                            let metadata: Option<String> = row.get(1)?;
-                            Ok((data, metadata))
-                        },
-                    )
-                    .map_err(into_tonic_status)?;
-
-                yield Ok(blob::GetResponse {
-                    bytes: data,
-                    metadata,
-                });
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::GetRequest { id }) => {
+                        let (data, metadata) = db
+                            .query_row(
+                                "SELECT data, metadata FROM BLOB WHERE rowid = ?",
+                                [&id],
+                                |row| {
+                                    let data: Vec<u8> = row.get(0)?;
+                                    let metadata: Option<String> = row.get(1)?;
+                                    Ok((data, metadata))
+                                },
+                            )
+                            .map_err(DatabaseError)?;
+                        yield Ok(blob::GetResponse { data, metadata });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
-        .instrument(trace_span!("SQLite blob get query"));
-        Ok(Response::new(Box::pin(stream)))
+        .instrument(trace_span!("SQLite BLOB get query"));
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn store(
-        &self,
-        request: StreamingRequest<blob::StoreRequest>,
-    ) -> RpcResponse<Self::StoreStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
-
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn store<Req>(&self, mut stream: Req) -> Result<Self::StoreStream, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::StoreRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
         let stream = stream!({
-            while let Some(blob::StoreRequest { bytes, metadata }) = stream.message().await? {
-                let id = db
-                    .query_row(
-                        "INSERT INTO blob(data, metadata) VALUES(?, ?) RETURNING rowid",
-                        (bytes, metadata),
-                        |row| row.get(0),
-                    )
-                    .map_err(into_tonic_status)?;
-                yield Ok(blob::StoreResponse { id });
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::StoreRequest { data, metadata }) => {
+                        let id = db
+                            .query_row(
+                                "INSERT INTO blob(data, metadata) VALUES(?, ?) RETURNING rowid",
+                                (data, metadata),
+                                |row| row.get(0),
+                            )
+                            .map_err(DatabaseError)?;
+                        yield Ok(blob::StoreResponse { id });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
         .instrument(trace_span!("SQLite blob store query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn update(
-        &self,
-        request: StreamingRequest<blob::UpdateRequest>,
-    ) -> RpcResponse<Self::UpdateStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
-
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn update<Req>(&self, mut stream: Req) -> Result<Self::UpdateStream, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::UpdateRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
         let stream = stream!({
-            while let Some(blob::UpdateRequest {
-                id,
-                bytes,
-                should_update_metadata,
-                metadata,
-            }) = stream.message().await?
-            {
-                match (bytes, should_update_metadata) {
-                    (None, false) => {}
-                    (Some(bytes), true) => {
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::UpdateRequest {
+                        id,
+                        data: None,
+                        metadata: None,
+                    }) => {
+                        yield Ok(blob::UpdateResponse { id });
+                    }
+                    Ok(blob::UpdateRequest {
+                        id,
+                        data: Some(data),
+                        metadata: Some(metadata),
+                    }) => {
                         db.execute(
                             "UPDATE blob SET data = ?, metadata = ? WHERE rowid = ?",
-                            (bytes, metadata, id),
+                            (data, metadata, id),
                         )
-                        .map_err(into_tonic_status)?;
+                        .map_err(DatabaseError)?;
+                        yield Ok(blob::UpdateResponse { id });
                     }
-                    (None, true) => {
+                    Ok(blob::UpdateRequest {
+                        id,
+                        data: None,
+                        metadata: Some(metadata),
+                    }) => {
                         db.execute(
                             "UPDATE blob SET metadata = ? WHERE rowid = ?",
                             (metadata, id),
                         )
-                        .map_err(into_tonic_status)?;
+                        .map_err(DatabaseError)?;
+                        yield Ok(blob::UpdateResponse { id });
                     }
-                    (Some(bytes), false) => {
-                        db.execute("UPDATE blob SET data = ? WHERE rowid = ?", (bytes, id))
-                            .map_err(into_tonic_status)?;
+                    Ok(blob::UpdateRequest {
+                        id,
+                        data: Some(data),
+                        metadata: None,
+                    }) => {
+                        db.execute("UPDATE blob SET data = ? WHERE rowid = ?", (data, id))
+                            .map_err(DatabaseError)?;
+                        yield Ok(blob::UpdateResponse { id });
                     }
+                    Err(err) => yield Err(err),
                 }
-                yield Ok(blob::UpdateResponse { id });
             }
         })
         .instrument(trace_span!("SQLite blob update query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn delete(
-        &self,
-        request: StreamingRequest<blob::DeleteRequest>,
-    ) -> RpcResponse<Self::DeleteStream> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn delete<Req>(&self, mut stream: Req) -> Result<Self::DeleteStream, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::DeleteRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
         let stream = stream!({
-            while let Some(blob::DeleteRequest { id }) = stream.message().await? {
-                db.execute("DELETE FROM blob WHERE rowid = ?", [id])
-                    .map_err(into_tonic_status)?;
-                yield Ok(blob::DeleteResponse { id });
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::DeleteRequest { id }) => {
+                        db.execute("DELETE FROM blob WHERE rowid = ?", [id])
+                            .map_err(DatabaseError)?;
+                        yield Ok(blob::DeleteResponse { id });
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
         })
         .instrument(trace_span!("SQLite blob delete query"));
-        Ok(Response::new(Box::pin(stream)))
+        Ok(Box::pin(stream))
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn eq_data(&self, request: StreamingRequest<blob::EqDataRequest>) -> RpcResponse<bool> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
-
-        let stream = Box::pin(stream!({
-            while let Some(blob::EqDataRequest { id }) = stream.message().await? {
-                let data = db
-                    .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
-                        row.get::<_, Vec<u8>>(0)
-                    })
-                    .map_err(into_tonic_status)?;
-
-                yield Ok::<_, Status>(data);
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn eq_data<Req>(&self, mut stream: Req) -> Result<bool, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::EqDataRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
+        let stream = stream!({
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::EqDataRequest { id }) => {
+                        let data = db
+                            .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
+                                row.get::<_, Vec<u8>>(0)
+                            })
+                            .map_err(DatabaseError)?;
+                        yield Ok(data);
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
-        }))
+        })
         .instrument(trace_span!("SQLite blob eq_data query"));
-        Ok(Response::new(helpers::all_eq(stream).await?))
+        Ok(helpers::all_eq(Box::pin(stream)).await?)
     }
 
-    #[cfg_attr(feature = "tracing", tracing::instrument)]
-    async fn not_eq_data(
-        &self,
-        request: StreamingRequest<blob::NotEqDataRequest>,
-    ) -> RpcResponse<bool> {
-        let mut stream = request.into_inner();
-        let db = self.connect_blob().map_err(into_tonic_status)?;
-
-        let stream = Box::pin(stream!({
-            while let Some(blob::NotEqDataRequest { id }) = stream.message().await? {
-                let data = db
-                    .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
-                        row.get::<_, Vec<u8>>(0)
-                    })
-                    .map_err(into_tonic_status)?;
-
-                yield Ok::<_, Status>(data);
+    #[cfg_attr(feature = "tracing", tracing::instrument(skip(stream)))]
+    async fn not_eq_data<Req>(&self, mut stream: Req) -> Result<bool, FrontendError>
+    where
+        Req: Stream<Item = Result<blob::NotEqDataRequest, FrontendError>> + Unpin + Send + 'static,
+    {
+        let db = self.connect_blob()?;
+        let stream = stream!({
+            while let Some(request) = stream.next().await {
+                match request {
+                    Ok(blob::NotEqDataRequest { id }) => {
+                        let data = db
+                            .query_row("SELECT data FROM blob WHERE rowid = ?", [id], |row| {
+                                row.get::<_, Vec<u8>>(0)
+                            })
+                            .map_err(DatabaseError)?;
+                        yield Ok(data);
+                    }
+                    Err(err) => yield Err(err),
+                }
             }
-        }))
+        })
         .instrument(trace_span!("SQLite blob not_eq_data query"));
-        Ok(Response::new(helpers::all_not_eq(stream).await?))
+        Ok(helpers::all_not_eq(Box::pin(stream)).await?)
     }
 }

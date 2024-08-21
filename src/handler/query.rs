@@ -1,10 +1,12 @@
 use crate::backend::DatabaseBackend;
-use crate::interop::{into_tonic_status, IntoTonicStatus};
+use crate::conv::grpc::{try_into_protobuf_any, TryIntoProtobufAny};
+use crate::interop::DatabaseError;
 use crate::proto::query::{QueryResult, RawQuery, RowsChanged, TargetStore};
 use crate::queryable::Queryable;
 use crate::service::query::QueryRpc;
-use crate::{DynStream, Location, RpcResponse, StreamingRequest};
+use crate::{Location, RpcResponse, StreamingRequest};
 use async_stream::stream;
+use futures::stream::BoxStream;
 use futures::StreamExt as _;
 use tonic::{Response, Status};
 
@@ -52,25 +54,25 @@ where
 #[tonic::async_trait]
 impl<Backend> QueryRpc for QueryHandler<Backend>
 where
-    Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
-        + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
+    Backend: DatabaseBackend<Error: Into<DatabaseError<Status>>, Connection: Send>
+        + Queryable<Status, QueryStream: Send, Any: TryIntoProtobufAny + Send>
         + Send
         + Sync
         + 'static,
 {
-    type QueryStream = DynStream<Result<QueryResult, Status>>;
-    type ExecuteStream = DynStream<Result<RowsChanged, Status>>;
+    type QueryStream = BoxStream<'static, Result<QueryResult, Status>>;
+    type ExecuteStream = BoxStream<'static, Result<RowsChanged, Status>>;
 
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     async fn query(&self, request: StreamingRequest<RawQuery>) -> RpcResponse<Self::QueryStream> {
         let mut request = request.into_inner();
 
-        let mut kv_conn = self.kv_backend.connect().map_err(into_tonic_status)?;
-        let mut blob_conn = self.blob_backend.connect().map_err(into_tonic_status)?;
+        let mut kv_conn = self.kv_backend.connect()?;
+        let mut blob_conn = self.blob_backend.connect()?;
 
         let stream = stream!({
             while let Some(RawQuery { query, target }) = request.message().await? {
-                match target.try_into().map_err(into_tonic_status)? {
+                match target.try_into().map_err(DatabaseError)? {
                     TargetStore::Kv => {
                         let (mut items, conn) = Backend::query(query, kv_conn).await;
                         kv_conn = conn;
@@ -89,6 +91,16 @@ where
             }
         });
 
+        let stream = stream.map(|item| {
+            Ok(QueryResult {
+                fields: item?
+                    .fields
+                    .into_iter()
+                    .map(try_into_protobuf_any)
+                    .collect::<Result<_, _>>()?,
+            })
+        });
+
         Ok(Response::new(Box::pin(stream)))
     }
 
@@ -99,12 +111,12 @@ where
     ) -> RpcResponse<Self::ExecuteStream> {
         let mut request = request.into_inner();
 
-        let mut kv_conn = self.kv_backend.connect().map_err(into_tonic_status)?;
-        let mut blob_conn = self.blob_backend.connect().map_err(into_tonic_status)?;
+        let mut kv_conn = self.kv_backend.connect()?;
+        let mut blob_conn = self.blob_backend.connect()?;
 
         let stream = stream!({
             while let Some(RawQuery { query, target }) = request.message().await? {
-                match target.try_into().map_err(into_tonic_status)? {
+                match target.try_into().map_err(DatabaseError)? {
                     TargetStore::Kv => {
                         let (res, conn) = Backend::execute(query, kv_conn).await;
                         kv_conn = conn;
@@ -117,6 +129,12 @@ where
                     }
                 }
             }
+        });
+
+        let stream = stream.map(|item| {
+            Ok(RowsChanged {
+                rows_changed: item?.rows_changed,
+            })
         });
 
         Ok(Response::new(Box::pin(stream)))

@@ -74,7 +74,7 @@ tracing-futures = { version = "0.2.5", features = [
 tracing-subscriber = { version = "0.3.18", optional = true }
 
 [build-dependencies]
-tonic-build = "0.12.1"
+tonic-build = { version = "0.12.1", git = "https://github.com/jhpratt/tonic" } # for hyperium/tonic#1872
 
 [dev-dependencies]
 anyhow = "1.0.86"

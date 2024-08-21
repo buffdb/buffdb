@@ -34,8 +34,8 @@ pub use self::rocksdb::RocksDb;
 #[cfg(feature = "sqlite")]
 pub use self::sqlite::Sqlite;
 use crate::internal_macros::future_send;
-use crate::proto::{blob, kv};
-use crate::{Location, RpcResponse, StreamingRequest};
+use crate::structs::{blob, kv};
+use crate::Location;
 use futures::Stream;
 
 /// A backend for a database, permitting connections to be established at a given location.
@@ -43,12 +43,21 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
     /// The type of connection to the database.
     type Connection;
     /// The type of any errors returned by the backend.
-    type Error; // TODO permit custom error messages?
+    type Error;
 
-    // TODO Consider a different error type such that in-memory connections can be rejected as
-    // necessary.
     /// Create a new instance of the backend at the given location.
     fn at_location(location: Location) -> Result<Self, Self::Error>;
+
+    fn at_path<P>(path: P) -> Result<Self, Self::Error>
+    where
+        P: Into<std::path::PathBuf>,
+    {
+        Self::at_location(Location::OnDisk { path: path.into() })
+    }
+
+    fn in_memory() -> Result<Self, Self::Error> {
+        Self::at_location(Location::InMemory)
+    }
 
     /// The location of the database.
     fn location(&self) -> &Location;
@@ -60,116 +69,108 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
 }
 
 /// A backend that supports key-value operations.
-pub trait KvBackend: DatabaseBackend + Send + Sync {
+pub trait KvBackend<FrontendError>: DatabaseBackend + Send + Sync {
     /// A stream for the response to a `get` command.
-    type GetStream: Stream<Item = Result<kv::GetResponse, tonic::Status>>;
+    type GetStream: Stream<Item = Result<kv::GetResponse, FrontendError>> + Unpin;
     /// A stream for the response to a `set` command.
-    type SetStream: Stream<Item = Result<kv::SetResponse, tonic::Status>>;
+    type SetStream: Stream<Item = Result<kv::SetResponse, FrontendError>> + Unpin;
     /// A stream for the response to a `delete` command.
-    type DeleteStream: Stream<Item = Result<kv::DeleteResponse, tonic::Status>>;
+    type DeleteStream: Stream<Item = Result<kv::DeleteResponse, FrontendError>> + Unpin;
 
     /// Initialize the key-value store.
     fn initialize(
         &self,
         #[allow(unused_variables)] connection: &Self::Connection,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), FrontendError> {
         Ok(())
     }
 
     /// Connect to the key-value store, initializing it if necessary.
-    fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_kv(&self) -> Result<Self::Connection, FrontendError> {
         let conn = self.connect()?;
         self.initialize(&conn)?;
         Ok(conn)
     }
 
     /// Get the value associated with the given key.
-    fn get(
-        &self,
-        request: StreamingRequest<kv::GetRequest>,
-    ) -> future_send!(RpcResponse<Self::GetStream>);
+    fn get<Req>(&self, request: Req) -> future_send!(Result<Self::GetStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<kv::GetRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Insert or update a key-value pair.
-    fn set(
-        &self,
-        request: StreamingRequest<kv::SetRequest>,
-    ) -> future_send!(RpcResponse<Self::SetStream>);
+    fn set<Req>(&self, request: Req) -> future_send!(Result<Self::SetStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<kv::SetRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Delete the key-value pair associated with the given key.
-    fn delete(
-        &self,
-        request: StreamingRequest<kv::DeleteRequest>,
-    ) -> future_send!(RpcResponse<Self::DeleteStream>);
+    fn delete<Req>(&self, request: Req) -> future_send!(Result<Self::DeleteStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<kv::DeleteRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Determine if all provided keys have the same value.
-    fn eq(&self, request: StreamingRequest<kv::EqRequest>) -> future_send!(RpcResponse<bool>);
+    fn eq<Req>(&self, request: Req) -> future_send!(Result<bool, FrontendError>)
+    where
+        Req: Stream<Item = Result<kv::EqRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Determine if all provided keys have different values.
-    fn not_eq(
-        &self,
-        request: StreamingRequest<kv::NotEqRequest>,
-    ) -> future_send!(RpcResponse<bool>);
+    fn not_eq<Req>(&self, request: Req) -> future_send!(Result<bool, FrontendError>)
+    where
+        Req: Stream<Item = Result<kv::NotEqRequest, FrontendError>> + Unpin + Send + 'static;
 }
 
 /// A backend that supports BLOB operations.
-pub trait BlobBackend: DatabaseBackend + Send + Sync {
+pub trait BlobBackend<FrontendError>: DatabaseBackend + Send + Sync {
     /// A stream for the response to a `get` command.
-    type GetStream: Stream<Item = Result<blob::GetResponse, tonic::Status>>;
+    type GetStream: Stream<Item = Result<blob::GetResponse, FrontendError>> + Unpin;
     /// A stream for the response to a `store` command.
-    type StoreStream: Stream<Item = Result<blob::StoreResponse, tonic::Status>>;
+    type StoreStream: Stream<Item = Result<blob::StoreResponse, FrontendError>> + Unpin;
     /// A stream for the response to an `update` command.
-    type UpdateStream: Stream<Item = Result<blob::UpdateResponse, tonic::Status>>;
+    type UpdateStream: Stream<Item = Result<blob::UpdateResponse, FrontendError>> + Unpin;
     /// A stream for the response to a `delete` command.
-    type DeleteStream: Stream<Item = Result<blob::DeleteResponse, tonic::Status>>;
+    type DeleteStream: Stream<Item = Result<blob::DeleteResponse, FrontendError>> + Unpin;
 
     /// Initialize the BLOB store.
     fn initialize(
         &self,
         #[allow(unused_variables)] connection: &Self::Connection,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), FrontendError> {
         Ok(())
     }
 
     /// Connect to the BLOB store, initializing it if necessary.
-    fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_blob(&self) -> Result<Self::Connection, FrontendError> {
         let conn = self.connect()?;
         self.initialize(&conn)?;
         Ok(conn)
     }
 
     /// Get the BLOB and associated metadata given the ID.
-    fn get(
-        &self,
-        request: StreamingRequest<blob::GetRequest>,
-    ) -> future_send!(RpcResponse<Self::GetStream>);
+    fn get<Req>(&self, request: Req) -> future_send!(Result<Self::GetStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::GetRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Store a BLOB and associated metadata, returning the ID.
-    fn store(
-        &self,
-        request: StreamingRequest<blob::StoreRequest>,
-    ) -> future_send!(RpcResponse<Self::StoreStream>);
+    fn store<Req>(&self, request: Req) -> future_send!(Result<Self::StoreStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::StoreRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Update the BLOB and/or its associated metadata.
-    fn update(
-        &self,
-        request: StreamingRequest<blob::UpdateRequest>,
-    ) -> future_send!(RpcResponse<Self::UpdateStream>);
+    fn update<Req>(&self, request: Req) -> future_send!(Result<Self::UpdateStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::UpdateRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Delete the BLOB and associated metadata given the ID.
-    fn delete(
-        &self,
-        request: StreamingRequest<blob::DeleteRequest>,
-    ) -> future_send!(RpcResponse<Self::DeleteStream>);
+    fn delete<Req>(&self, request: Req) -> future_send!(Result<Self::DeleteStream, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::DeleteRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Determine if all provided IDs have the same data. Metadata is not considered.
-    fn eq_data(
-        &self,
-        request: StreamingRequest<blob::EqDataRequest>,
-    ) -> future_send!(RpcResponse<bool>);
+    fn eq_data<Req>(&self, request: Req) -> future_send!(Result<bool, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::EqDataRequest, FrontendError>> + Unpin + Send + 'static;
 
     /// Determine if all provided IDs have different data. Metadata is not considered.
-    fn not_eq_data(
-        &self,
-        request: StreamingRequest<blob::NotEqDataRequest>,
-    ) -> future_send!(RpcResponse<bool>);
+    fn not_eq_data<Req>(&self, request: Req) -> future_send!(Result<bool, FrontendError>)
+    where
+        Req: Stream<Item = Result<blob::NotEqDataRequest, FrontendError>> + Unpin + Send + 'static;
 }

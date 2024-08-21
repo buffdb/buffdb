@@ -48,8 +48,8 @@ pub trait BlobHandler<Store> {
 }
 
 /// Handle query operations for all stores.
-pub trait QueryHandleTrait<KvStore, BlobStore = KvStore> {
+pub trait QueryHandleTrait<Any, KvStore, BlobStore = KvStore> {
     fn from_stores(kv_store: KvStore, blob_store: BlobStore) -> Self;
-    fn query(&self, request: RawQuery) -> future_send!(QueryResponse);
+    fn query(&self, request: RawQuery) -> future_send!(QueryResponse<Any>);
     fn execute(&self, request: RawQuery) -> future_send!(ExecuteResponse);
 }

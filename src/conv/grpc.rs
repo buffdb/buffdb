@@ -15,13 +15,20 @@ where
 }
 
 #[cfg(any(feature = "duckdb", feature = "sqlite"))]
-pub(crate) trait TryIntoProtobufAny {
+pub trait TryIntoProtobufAny {
     fn try_into_protobuf_any(self) -> Result<Any, Unsupported>;
 }
 
 #[derive(Debug)]
-pub(crate) struct Unsupported {
+pub struct Unsupported {
     pub(crate) message: &'static str,
+}
+
+impl Unsupported {
+    #[inline]
+    pub fn new(message: &'static str) -> Self {
+        Self { message }
+    }
 }
 
 impl From<Unsupported> for tonic::Status {
