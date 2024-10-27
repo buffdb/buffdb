@@ -1,6 +1,7 @@
 <p align="center">
-<a href="https://discord.com/channels/1267505649198305384/1267505649969795136"><img width="250" align="center" alt="image" src="https://sim.build/assets/images/image02.png?v=d300fa7d"></a>
-</p>
+
+<a href="https://discord.com/channels/1267505649198305384/1267505649969795136"> Discord
+</a>
 
 # 🦁 buffdb 🦁
 
