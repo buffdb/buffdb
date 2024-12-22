@@ -122,7 +122,7 @@ macro_rules! declare_clients {
             });
 
             let mut client = Some(client);
-            let channel = Endpoint::try_from("http://[::]:50051")?
+            let channel = Endpoint::try_from("http://[::]:9313")?
                 .connect_with_connector(tower::service_fn(move |_| {
                     let client = client.take();
                     async move {
@@ -204,7 +204,7 @@ where
     });
 
     let mut client = Some(client);
-    let channel = Endpoint::try_from("http://[::]:50051")?
+    let channel = Endpoint::try_from("http://[::]:9313")?
         .connect_with_connector(tower::service_fn(move |_| {
             let client = client.take();
             async move {

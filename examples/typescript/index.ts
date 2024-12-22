@@ -5,7 +5,7 @@ import type { StoreResponse } from './proto/buffdb/blob/StoreResponse';
 
 const proto = grpc.loadPackageDefinition(protoLoader.loadSync('../../proto/blob.proto')) as unknown as BlobType;
 
-const blob_client = new proto.buffdb.blob.Blob('[::1]:50051', grpc.credentials.createInsecure());
+const blob_client = new proto.buffdb.blob.Blob('[::1]:9313', grpc.credentials.createInsecure());
 const get = blob_client.Get();
 const store = blob_client.Store();
 

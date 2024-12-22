@@ -77,7 +77,7 @@ pub(crate) struct RunArgs {
     #[clap(long, default_value = "blob_store.db")]
     pub(crate) blob_store: PathBuf,
     /// The address to listen on.
-    #[clap(default_value = "[::1]:50051")]
+    #[clap(default_value = "[::1]:9313")]
     pub(crate) addr: SocketAddr,
 }
 

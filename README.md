@@ -20,7 +20,7 @@ To add BuffDB to your Rust project, run `cargo add buffdb`.
 
 Using auto-generated code from the protobuf definition, we can interact with the server in many
 languages. The following example demonstrates how to interact with the server in TypeScript. The
-server is assumed to be running on port 50051. See the `examples` directory for demos in other
+server is assumed to be running on port 9313. See the `examples` directory for demos in other
 languages.
 
 ```typescript
@@ -34,7 +34,7 @@ const proto = grpc.loadPackageDefinition(
 ) as unknown as BlobType;
 
 const blob_client = new proto.buffdb.blob.Blob(
-    "[::1]:50051",
+    "[::1]:9313",
     grpc.credentials.createInsecure()
 );
 const get = blob_client.Get();
@@ -98,7 +98,7 @@ cloned, you can run
 cargo run --all-features -- run
 ```
 
-This will start the server on `[::1]:50051`, storing the key-value pairs in `kv_store.db` and
+This will start the server on `[::1]:9313`, storing the key-value pairs in `kv_store.db` and
 the blob data in `blob_store.db`. All three can be configured with command line flags:
 `--addr`, `--kv-store`, and `--blob-store` respectively.
 
@@ -113,7 +113,7 @@ Prefer to handle the gRPC server yourself? `buffdb` can be used as a library as 
 You can use `buffdb help` to see the commands and flags permitted. The following operations are
 currently supported:
 
-- `buffdb run [ADDR]`, starting the server. The default address is `[::1]:50051`.
+- `buffdb run [ADDR]`, starting the server. The default address is `[::1]:9313`.
 - `buffdb kv get <KEY>`, printing the value to stdout.
 - `buffdb kv set <KEY> <VALUE>`, setting the value.
 - `buffdb kv delete <KEY>`, deleting the value.
