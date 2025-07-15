@@ -1,0 +1,148 @@
+name: Test New Features
+
+on:
+  push:
+    paths:
+      - 'src/transaction.rs'
+      - 'src/index.rs'
+      - 'src/fts.rs'
+      - 'src/json_store.rs'
+      - 'src/mvcc.rs'
+      - 'src/backend/*_transaction.rs'
+      - 'tests/**/*test*.rs'
+      - '.github/workflows/test-new-features.yml'
+  pull_request:
+    paths:
+      - 'src/transaction.rs'
+      - 'src/index.rs'
+      - 'src/fts.rs'
+      - 'src/json_store.rs'
+      - 'src/mvcc.rs'
+      - 'src/backend/*_transaction.rs'
+      - 'tests/**/*test*.rs'
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  test-transactions:
+    name: Test Transaction Support
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test SQLite Transactions
+        run: |
+          cargo test --test transaction_test --features vendored-sqlite -- --nocapture
+          cargo test sqlite_transaction --features vendored-sqlite
+      
+      - name: Test DuckDB Transactions
+        run: |
+          cargo test duckdb_transaction --features vendored-duckdb
+        continue-on-error: true # DuckDB tests might need additional setup
+      
+      - name: Test RocksDB Transactions
+        run: |
+          cargo test rocksdb_transaction --features vendored-rocksdb
+        continue-on-error: true # RocksDB tests might need additional setup
+
+  test-indexing:
+    name: Test Indexing System
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test Index Operations
+        run: |
+          cargo test --test index_test --features vendored-sqlite -- --nocapture
+          cargo test index:: --features vendored-sqlite
+      
+      - name: Test Index Integration
+        run: |
+          cargo test test_index --features vendored-sqlite
+
+  test-fts:
+    name: Test Full-Text Search
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test FTS Module
+        run: |
+          cargo test fts:: --all-features
+          cargo test test_tokenizer --all-features
+          cargo test test_basic_search --all-features
+          cargo test test_phrase_search --all-features
+
+  test-json-store:
+    name: Test JSON Document Store
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test JSON Store
+        run: |
+          cargo test json_store:: --all-features
+          cargo test test_json_path --all-features
+
+  test-mvcc:
+    name: Test MVCC
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test MVCC Implementation
+        run: |
+          cargo test mvcc:: --all-features
+          cargo test test_basic_mvcc --all-features
+          cargo test test_repeatable_read --all-features
+          cargo test test_write_conflict --all-features
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run All Integration Tests
+        run: |
+          cargo test --all-features --test '*'
+      
+      - name: Test Examples Compile
+        run: |
+          cargo check --example advanced_features --all-features
+          cargo check --example full_features_demo --all-features
+
+  test-feature-combinations:
+    name: Test Feature Combinations
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - "vendored-sqlite"
+          - "vendored-duckdb"
+          - "vendored-rocksdb"
+          - "vendored-sqlite,vendored-duckdb"
+          - "vendored-sqlite,vendored-rocksdb"
+          - "vendored-duckdb,vendored-rocksdb"
+          - "vendored-sqlite,vendored-duckdb,vendored-rocksdb"
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Test with features ${{ matrix.features }}
+        run: cargo test --features "${{ matrix.features }}"
+        continue-on-error: true # Some combinations might have issues

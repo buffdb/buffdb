@@ -36,12 +36,23 @@ service Kv {
   //
   // Returns `false` if any key is not found.
   rpc NotEq(stream NotEqRequest) returns (google.protobuf.BoolValue);
+
+  // Begin a new transaction. Returns a transaction ID that must be passed to subsequent operations.
+  rpc BeginTransaction(BeginTransactionRequest) returns (BeginTransactionResponse);
+
+  // Commit a transaction. All operations within the transaction are made permanent.
+  rpc CommitTransaction(CommitTransactionRequest) returns (CommitTransactionResponse);
+
+  // Rollback a transaction. All operations within the transaction are discarded.
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (RollbackTransactionResponse);
 }
 
 // A request to get a value for a given key.
 message GetRequest {
   // The key half of a key-value pair.
   string key = 1;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 2;
 }
 
 // A response containing a value for a given key.
@@ -56,6 +67,8 @@ message SetRequest {
   string key = 1;
   // The value half of the pair, associated with a specific key. Values are not necessarily unique.
   string value = 2;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 3;
 }
 
 // A response containing the key for a given key-value pair.
@@ -68,6 +81,8 @@ message SetResponse {
 message DeleteRequest {
   // The key half of a key-value pair.
   string key = 1;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 2;
 }
 
 // A response containing the key for a given key-value pair.
@@ -86,4 +101,46 @@ message EqRequest {
 message NotEqRequest {
   // The key half of a key-value pair.
   string key = 1;
+}
+
+// A request to begin a new transaction.
+message BeginTransactionRequest {
+  // Whether the transaction should be read-only.
+  optional bool read_only = 1;
+  // Optional timeout for the transaction in milliseconds.
+  optional int32 timeout_ms = 2;
+}
+
+// A response containing the transaction ID.
+message BeginTransactionResponse {
+  // The unique identifier for the transaction.
+  string transaction_id = 1;
+}
+
+// A request to commit a transaction.
+message CommitTransactionRequest {
+  // The transaction ID to commit.
+  string transaction_id = 1;
+}
+
+// A response indicating the result of a commit operation.
+message CommitTransactionResponse {
+  // Whether the commit was successful.
+  bool success = 1;
+  // Optional error message if the commit failed.
+  optional string error_message = 2;
+}
+
+// A request to rollback a transaction.
+message RollbackTransactionRequest {
+  // The transaction ID to rollback.
+  string transaction_id = 1;
+}
+
+// A response indicating the result of a rollback operation.
+message RollbackTransactionResponse {
+  // Whether the rollback was successful.
+  bool success = 1;
+  // Optional error message if the rollback failed.
+  optional string error_message = 2;
 }

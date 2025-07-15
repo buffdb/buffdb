@@ -5,11 +5,17 @@
 mod arc;
 #[cfg(feature = "duckdb")]
 mod duckdb;
+#[cfg(feature = "duckdb")]
+mod duckdb_transaction;
 mod helpers;
 #[cfg(feature = "rocksdb")]
 mod rocksdb;
+#[cfg(feature = "rocksdb")]
+mod rocksdb_transaction;
 #[cfg(feature = "sqlite")]
 mod sqlite;
+#[cfg(feature = "sqlite")]
+mod sqlite_transaction;
 
 use std::sync::Arc;
 

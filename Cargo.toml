@@ -72,6 +72,9 @@ tracing-futures = { version = "0.2.5", features = [
     "futures-03",
 ], optional = true }
 tracing-subscriber = { version = "0.3.18", optional = true }
+uuid = { version = "1.10.0", features = ["v4"] }
+thiserror = "1.0"
+ordered-float = "4.2"
 
 [build-dependencies]
 tonic-build = "0.12.1"
@@ -104,7 +107,7 @@ non-ascii-idents = "deny"
 opaque-hidden-inferred-bound = "deny"
 overlapping-range-endpoints = "deny"
 suspicious-double-ref-op = "deny"
-temporary-cstring-as-ptr = "deny"
+dangling-pointers-from-temporaries = "deny"
 unconditional-recursion = "deny"
 unnameable-test-items = "deny"
 unsafe-op-in-unsafe-fn = "deny"

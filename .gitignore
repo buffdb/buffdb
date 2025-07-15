@@ -4,3 +4,4 @@
 examples/typescript/tsconfig.tsbuildinfo
 examples/typescript/**/*.js
 examples/typescript/proto
+.DS_STORE
