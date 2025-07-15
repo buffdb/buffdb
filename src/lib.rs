@@ -27,12 +27,17 @@ mod blob;
 mod conv;
 #[cfg(feature = "duckdb")]
 mod duckdb_helper;
+pub mod fts;
+pub mod index;
 pub mod interop;
+pub mod json_store;
 mod kv;
 mod location;
+pub mod mvcc;
 mod query;
 pub mod queryable;
 mod tracing_shim;
+pub mod transaction;
 pub mod transitive;
 
 /// Rust bindings for the gRPC schema provided by the protobufs.
@@ -64,7 +69,9 @@ pub mod proto {
     /// Protobuf types needed to interact with the KV store.
     pub mod kv {
         pub use crate::bindings::buffdb::kv::{
-            DeleteRequest, DeleteResponse, EqRequest, GetRequest, GetResponse, NotEqRequest,
+            BeginTransactionRequest, BeginTransactionResponse, CommitTransactionRequest,
+            CommitTransactionResponse, DeleteRequest, DeleteResponse, EqRequest, GetRequest,
+            GetResponse, NotEqRequest, RollbackTransactionRequest, RollbackTransactionResponse,
             SetRequest, SetResponse,
         };
     }

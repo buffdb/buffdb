@@ -48,6 +48,8 @@ service Blob {
 message GetRequest {
   // The ID of the BLOB to retrieve.
   uint64 id = 1;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 2;
 }
 
 // Response containing the data and metadata of a BLOB.
@@ -64,6 +66,8 @@ message StoreRequest {
   bytes bytes = 1;
   // The metadata of the BLOB.
   optional string metadata = 2;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 3;
 }
 
 // Response containing the ID of the stored BLOB.
@@ -82,6 +86,8 @@ message UpdateRequest {
   bool should_update_metadata = 3;
   // The updated metadata of the BLOB. Ignored if should_update_metadata is false.
   optional string metadata = 4;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 5;
 }
 
 // Response containing the ID of the updated BLOB.
@@ -94,6 +100,8 @@ message UpdateResponse {
 message DeleteRequest {
   // The ID of the BLOB to delete.
   uint64 id = 1;
+  // Optional transaction ID. If provided, the operation will be performed within the transaction.
+  optional string transaction_id = 2;
 }
 
 // Response containing the ID of the deleted BLOB.
