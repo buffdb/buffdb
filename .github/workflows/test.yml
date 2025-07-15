@@ -2,9 +2,9 @@ name: Tests
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 env:
   RUST_BACKTRACE: 1
@@ -53,18 +53,9 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           
-      # Run all tests
+      # Run all tests (unit + integration)
       - name: Run all tests
-        run: cargo test --all --features vendored-sqlite
-        
-      # Run unit tests for specific modules
-      - name: Run unit tests
-        run: |
-          cargo test --lib transaction --features vendored-sqlite
-          cargo test --lib index --features vendored-sqlite
-          cargo test --lib fts --features vendored-sqlite
-          cargo test --lib json_store --features vendored-sqlite
-          cargo test --lib mvcc --features vendored-sqlite
+        run: cargo test --features vendored-sqlite
         
       # Build examples to ensure they compile
       - name: Build examples

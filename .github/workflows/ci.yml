@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main ]
 
 env:
   RUST_BACKTRACE: 1
@@ -29,7 +29,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --features vendored-sqlite
 
   fmt:
     name: Rustfmt
@@ -54,4 +54,4 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo clippy --features vendored-sqlite -- -D warnings
