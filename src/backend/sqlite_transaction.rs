@@ -1,6 +1,6 @@
-use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
 use crate::backend::sqlite::Sqlite;
 use crate::backend::KvBackend;
+use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
 use crate::{RpcResponse, StreamingRequest};
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -19,7 +19,7 @@ impl SqliteTransaction {
             committed: Arc::new(Mutex::new(false)),
         }
     }
-    
+
     pub fn connection(&self) -> Arc<Mutex<Connection>> {
         Arc::clone(&self.conn)
     }
@@ -27,25 +27,25 @@ impl SqliteTransaction {
 
 impl Transaction for SqliteTransaction {
     type Error = rusqlite::Error;
-    
+
     fn commit(self) -> Result<(), Self::Error> {
         let mut committed = self.committed.lock().unwrap();
         if *committed {
             return Ok(());
         }
-        
+
         let conn = self.conn.lock().unwrap();
         conn.execute("COMMIT", [])?;
         *committed = true;
         Ok(())
     }
-    
+
     fn rollback(self) -> Result<(), Self::Error> {
         let mut committed = self.committed.lock().unwrap();
         if *committed {
             return Ok(());
         }
-        
+
         let conn = self.conn.lock().unwrap();
         conn.execute("ROLLBACK", [])?;
         *committed = true;
@@ -67,13 +67,13 @@ impl Drop for SqliteTransaction {
 
 impl TransactionalBackend for Sqlite {
     type Transaction = SqliteTransaction;
-    
+
     fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error> {
         let mut conn = self.connect()?;
         conn.execute("BEGIN IMMEDIATE", [])?;
         Ok(SqliteTransaction::new(conn))
     }
-    
+
     fn begin_read_transaction(&self) -> Result<Self::Transaction, Self::Error> {
         let mut conn = self.connect()?;
         conn.execute("BEGIN", [])?;
@@ -93,7 +93,7 @@ impl TransactionalKvBackend for Sqlite {
         // and use its connection
         self.get(request).await
     }
-    
+
     async fn set_in_transaction(
         &self,
         transaction_id: &str,
@@ -102,7 +102,7 @@ impl TransactionalKvBackend for Sqlite {
         // For now, we'll use the regular set implementation
         self.set(request).await
     }
-    
+
     async fn delete_in_transaction(
         &self,
         transaction_id: &str,

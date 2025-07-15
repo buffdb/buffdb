@@ -4,8 +4,8 @@
 //! key-value store, with support for JSONPath queries and partial updates.
 
 use crate::backend::{DatabaseBackend, KvBackend};
-use crate::index::{IndexConfig, IndexManager, IndexType, IndexValue};
 use crate::fts::{FtsManager, Tokenizer};
+use crate::index::{IndexConfig, IndexManager, IndexType, IndexValue};
 use crate::interop::IntoTonicStatus;
 use crate::transaction::{TransactionManager, TransactionalBackend};
 use crate::{Location, RpcResponse, StreamingRequest};
@@ -21,23 +21,23 @@ use tonic::Status;
 pub enum JsonStoreError {
     #[error("Document not found: {id}")]
     DocumentNotFound { id: String },
-    
+
     #[error("Invalid JSON: {0}")]
     InvalidJson(#[from] serde_json::Error),
-    
+
     #[error("Invalid JSONPath expression: {0}")]
     InvalidJsonPath(String),
-    
+
     #[error("Type mismatch at path {path}: expected {expected}, got {actual}")]
     TypeMismatch {
         path: String,
         expected: String,
         actual: String,
     },
-    
+
     #[error("Index error: {0}")]
     IndexError(#[from] crate::index::IndexError),
-    
+
     #[error("Backend error: {0}")]
     BackendError(String),
 }
@@ -84,15 +84,12 @@ where
             collection,
         }
     }
-    
+
     /// Create a new JSON document store at the given location
     pub fn at_location(location: Location, collection: String) -> Result<Self, Backend::Error> {
-        Ok(Self::new(
-            Backend::at_location(location)?,
-            collection,
-        ))
+        Ok(Self::new(Backend::at_location(location)?, collection))
     }
-    
+
     /// Create a JSON path index
     pub fn create_json_index(
         &self,
@@ -107,10 +104,10 @@ where
             unique,
             filter: Some(json_path),
         };
-        
+
         self.index_manager.create_index(config)
     }
-    
+
     /// Create a full-text search index on a JSON path
     pub fn create_fts_index(
         &self,
@@ -119,17 +116,17 @@ where
     ) -> Result<(), crate::index::IndexError> {
         let index_name = format!("{}_{}", self.collection, name);
         self.fts_manager.create_index(index_name)?;
-        
+
         // Store the JSON path mapping
         // In a real implementation, we'd store this persistently
         Ok(())
     }
-    
+
     /// Generate document key
     fn doc_key(&self, id: &str) -> String {
         format!("{}:doc:{}", self.collection, id)
     }
-    
+
     /// Generate metadata key
     fn meta_key(&self, id: &str) -> String {
         format!("{}:meta:{}", self.collection, id)
@@ -144,25 +141,25 @@ impl JsonPath {
     pub fn query(json: &Value, path: &str) -> Result<Vec<&Value>, JsonStoreError> {
         // Simple JSONPath implementation
         // Full implementation would use a proper JSONPath parser
-        
+
         let parts: Vec<&str> = path.split('.').collect();
         if parts.is_empty() || parts[0] != "$" {
             return Err(JsonStoreError::InvalidJsonPath(
-                "Path must start with $".to_string()
+                "Path must start with $".to_string(),
             ));
         }
-        
+
         let mut current = vec![json];
-        
+
         for part in parts.iter().skip(1) {
             let mut next = Vec::new();
-            
+
             for value in current {
                 if part.ends_with(']') {
                     // Array access
                     let (field, index_str) = part.split_once('[').unwrap();
                     let index_str = index_str.trim_end_matches(']');
-                    
+
                     if let Some(obj) = value.get(field) {
                         if let Some(arr) = obj.as_array() {
                             if index_str == "*" {
@@ -190,44 +187,44 @@ impl JsonPath {
                     }
                 }
             }
-            
+
             current = next;
         }
-        
+
         Ok(current)
     }
-    
+
     /// Set a value at a JSONPath location
     pub fn set(json: &mut Value, path: &str, new_value: Value) -> Result<(), JsonStoreError> {
         let parts: Vec<&str> = path.split('.').collect();
         if parts.is_empty() || parts[0] != "$" {
             return Err(JsonStoreError::InvalidJsonPath(
-                "Path must start with $".to_string()
+                "Path must start with $".to_string(),
             ));
         }
-        
+
         let mut current = json;
-        
+
         for (i, part) in parts.iter().skip(1).enumerate() {
             let is_last = i == parts.len() - 2;
-            
+
             if part.ends_with(']') {
                 // Array access
                 let (field, index_str) = part.split_once('[').unwrap();
                 let index_str = index_str.trim_end_matches(']');
-                
+
                 // Ensure field exists and is an array
                 if !current.get(field).map(|v| v.is_array()).unwrap_or(false) {
                     current[field] = Value::Array(Vec::new());
                 }
-                
+
                 if let Some(arr) = current.get_mut(field).and_then(|v| v.as_array_mut()) {
                     if let Ok(index) = index_str.parse::<usize>() {
                         // Extend array if needed
                         while arr.len() <= index {
                             arr.push(Value::Null);
                         }
-                        
+
                         if is_last {
                             arr[index] = new_value;
                             return Ok(());
@@ -241,19 +238,20 @@ impl JsonPath {
                 if !current.is_object() {
                     *current = Value::Object(Map::new());
                 }
-                
+
                 if let Some(obj) = current.as_object_mut() {
                     if is_last {
                         obj.insert(part.to_string(), new_value);
                         return Ok(());
                     } else {
-                        obj.entry(part.to_string()).or_insert(Value::Object(Map::new()));
+                        obj.entry(part.to_string())
+                            .or_insert(Value::Object(Map::new()));
                         current = obj.get_mut(part).unwrap();
                     }
                 }
             }
         }
-        
+
         Ok(())
     }
 }
@@ -271,7 +269,7 @@ where
         schema: Option<String>,
     ) -> Result<JsonDocument, JsonStoreError> {
         let now = chrono::Utc::now();
-        
+
         let metadata = DocumentMetadata {
             id: id.clone(),
             created_at: now,
@@ -279,149 +277,165 @@ where
             version: 1,
             schema,
         };
-        
+
         let document = JsonDocument {
             metadata: metadata.clone(),
             data: data.clone(),
         };
-        
+
         // Store document
         let doc_key = self.doc_key(&id);
         let doc_value = serde_json::to_string(&data)?;
-        
-        let set_request = tokio_stream::iter(vec![
-            crate::proto::kv::SetRequest {
+
+        let set_request = tokio_stream::iter(
+            vec![crate::proto::kv::SetRequest {
                 key: doc_key,
                 value: doc_value,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.set(tonic::Request::new(set_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .set(tonic::Request::new(set_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         // Store metadata
         let meta_key = self.meta_key(&id);
         let meta_value = serde_json::to_string(&metadata)?;
-        
-        let meta_request = tokio_stream::iter(vec![
-            crate::proto::kv::SetRequest {
+
+        let meta_request = tokio_stream::iter(
+            vec![crate::proto::kv::SetRequest {
                 key: meta_key,
                 value: meta_value,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.set(tonic::Request::new(meta_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .set(tonic::Request::new(meta_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         // Update indexes
         self.update_indexes(&id, None, &data)?;
-        
+
         Ok(document)
     }
-    
+
     /// Get a document by ID
     pub async fn get(&self, id: &str) -> Result<JsonDocument, JsonStoreError> {
         // Get document data
         let doc_key = self.doc_key(id);
-        let get_request = tokio_stream::iter(vec![
-            crate::proto::kv::GetRequest {
+        let get_request = tokio_stream::iter(
+            vec![crate::proto::kv::GetRequest {
                 key: doc_key,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        let mut response = self.backend.get(tonic::Request::new(get_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        let mut response = self
+            .backend
+            .get(tonic::Request::new(get_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?
             .into_inner();
-        
+
         let doc_value = if let Some(Ok(resp)) = response.message().await {
             resp.value
         } else {
             return Err(JsonStoreError::DocumentNotFound { id: id.to_string() });
         };
-        
+
         let data: Value = serde_json::from_str(&doc_value)?;
-        
+
         // Get metadata
         let meta_key = self.meta_key(id);
-        let meta_request = tokio_stream::iter(vec![
-            crate::proto::kv::GetRequest {
+        let meta_request = tokio_stream::iter(
+            vec![crate::proto::kv::GetRequest {
                 key: meta_key,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        let mut meta_response = self.backend.get(tonic::Request::new(meta_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        let mut meta_response = self
+            .backend
+            .get(tonic::Request::new(meta_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?
             .into_inner();
-        
+
         let meta_value = if let Some(Ok(resp)) = meta_response.message().await {
             resp.value
         } else {
             return Err(JsonStoreError::DocumentNotFound { id: id.to_string() });
         };
-        
+
         let metadata: DocumentMetadata = serde_json::from_str(&meta_value)?;
-        
+
         Ok(JsonDocument { metadata, data })
     }
-    
+
     /// Update a document
-    pub async fn update(
-        &self,
-        id: &str,
-        data: Value,
-    ) -> Result<JsonDocument, JsonStoreError> {
+    pub async fn update(&self, id: &str, data: Value) -> Result<JsonDocument, JsonStoreError> {
         let mut document = self.get(id).await?;
-        
+
         document.data = data;
         document.metadata.updated_at = chrono::Utc::now();
         document.metadata.version += 1;
-        
+
         // Update document
         let doc_key = self.doc_key(id);
         let doc_value = serde_json::to_string(&document.data)?;
-        
-        let set_request = tokio_stream::iter(vec![
-            crate::proto::kv::SetRequest {
+
+        let set_request = tokio_stream::iter(
+            vec![crate::proto::kv::SetRequest {
                 key: doc_key,
                 value: doc_value,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.set(tonic::Request::new(set_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .set(tonic::Request::new(set_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         // Update metadata
         let meta_key = self.meta_key(id);
         let meta_value = serde_json::to_string(&document.metadata)?;
-        
-        let meta_request = tokio_stream::iter(vec![
-            crate::proto::kv::SetRequest {
+
+        let meta_request = tokio_stream::iter(
+            vec![crate::proto::kv::SetRequest {
                 key: meta_key,
                 value: meta_value,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.set(tonic::Request::new(meta_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .set(tonic::Request::new(meta_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         // Update indexes
         self.update_indexes(id, Some(&document.data), &data)?;
-        
+
         Ok(document)
     }
-    
+
     /// Partially update a document using JSONPath
     pub async fn patch(
         &self,
@@ -430,50 +444,56 @@ where
         value: Value,
     ) -> Result<JsonDocument, JsonStoreError> {
         let mut document = self.get(id).await?;
-        
+
         // Apply the patch
         JsonPath::set(&mut document.data, path, value)?;
-        
+
         // Save the updated document
         self.update(id, document.data).await
     }
-    
+
     /// Delete a document
     pub async fn delete(&self, id: &str) -> Result<(), JsonStoreError> {
         let document = self.get(id).await?;
-        
+
         // Remove from indexes
         self.remove_from_indexes(id, &document.data)?;
-        
+
         // Delete document
         let doc_key = self.doc_key(id);
-        let del_request = tokio_stream::iter(vec![
-            crate::proto::kv::DeleteRequest {
+        let del_request = tokio_stream::iter(
+            vec![crate::proto::kv::DeleteRequest {
                 key: doc_key,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.delete(tonic::Request::new(del_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .delete(tonic::Request::new(del_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         // Delete metadata
         let meta_key = self.meta_key(id);
-        let meta_del_request = tokio_stream::iter(vec![
-            crate::proto::kv::DeleteRequest {
+        let meta_del_request = tokio_stream::iter(
+            vec![crate::proto::kv::DeleteRequest {
                 key: meta_key,
                 transaction_id: None,
-            }
-        ].into_iter().map(Ok));
-        
-        self.backend.delete(tonic::Request::new(meta_del_request))
+            }]
+            .into_iter()
+            .map(Ok),
+        );
+
+        self.backend
+            .delete(tonic::Request::new(meta_del_request))
             .await
             .map_err(|e| JsonStoreError::BackendError(e.to_string()))?;
-        
+
         Ok(())
     }
-    
+
     /// Query documents using JSONPath
     pub async fn query(
         &self,
@@ -484,7 +504,7 @@ where
         // For now, return empty results
         Ok(Vec::new())
     }
-    
+
     fn update_indexes(
         &self,
         id: &str,
@@ -497,12 +517,8 @@ where
         // For now, this is a placeholder
         Ok(())
     }
-    
-    fn remove_from_indexes(
-        &self,
-        id: &str,
-        data: &Value,
-    ) -> Result<(), JsonStoreError> {
+
+    fn remove_from_indexes(&self, id: &str, data: &Value) -> Result<(), JsonStoreError> {
         // In a real implementation, we would remove from all indexes
         Ok(())
     }
@@ -511,7 +527,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_json_path_query() {
         let json = serde_json::json!({
@@ -525,27 +541,27 @@ mod tests {
                 }
             }
         });
-        
+
         // Simple field access
         let results = JsonPath::query(&json, "$.user.name").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], &Value::String("Alice".to_string()));
-        
+
         // Nested field access
         let results = JsonPath::query(&json, "$.user.address.city").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], &Value::String("New York".to_string()));
-        
+
         // Array access
         let results = JsonPath::query(&json, "$.user.emails[0]").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0], &Value::String("alice@example.com".to_string()));
-        
+
         // Array wildcard
         let results = JsonPath::query(&json, "$.user.emails[*]").unwrap();
         assert_eq!(results.len(), 2);
     }
-    
+
     #[test]
     fn test_json_path_set() {
         let mut json = serde_json::json!({
@@ -553,17 +569,27 @@ mod tests {
                 "name": "Alice"
             }
         });
-        
+
         // Set simple field
         JsonPath::set(&mut json, "$.user.age", Value::Number(30.into())).unwrap();
         assert_eq!(json["user"]["age"], 30);
-        
+
         // Set nested field (creates path)
-        JsonPath::set(&mut json, "$.user.address.city", Value::String("NYC".to_string())).unwrap();
+        JsonPath::set(
+            &mut json,
+            "$.user.address.city",
+            Value::String("NYC".to_string()),
+        )
+        .unwrap();
         assert_eq!(json["user"]["address"]["city"], "NYC");
-        
+
         // Set array element
-        JsonPath::set(&mut json, "$.user.tags[0]", Value::String("admin".to_string())).unwrap();
+        JsonPath::set(
+            &mut json,
+            "$.user.tags[0]",
+            Value::String("admin".to_string()),
+        )
+        .unwrap();
         assert_eq!(json["user"]["tags"][0], "admin");
     }
 }

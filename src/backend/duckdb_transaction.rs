@@ -1,6 +1,6 @@
-use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
 use crate::backend::duckdb::DuckDb;
 use crate::backend::KvBackend;
+use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
 use crate::{RpcResponse, StreamingRequest};
 use duckdb::Connection;
 use std::sync::{Arc, Mutex};
@@ -19,7 +19,7 @@ impl DuckDbTransaction {
             committed: Arc::new(Mutex::new(false)),
         }
     }
-    
+
     pub fn connection(&self) -> Arc<Mutex<Connection>> {
         Arc::clone(&self.conn)
     }
@@ -27,25 +27,25 @@ impl DuckDbTransaction {
 
 impl Transaction for DuckDbTransaction {
     type Error = duckdb::Error;
-    
+
     fn commit(self) -> Result<(), Self::Error> {
         let mut committed = self.committed.lock().unwrap();
         if *committed {
             return Ok(());
         }
-        
+
         let conn = self.conn.lock().unwrap();
         conn.execute("COMMIT", [])?;
         *committed = true;
         Ok(())
     }
-    
+
     fn rollback(self) -> Result<(), Self::Error> {
         let mut committed = self.committed.lock().unwrap();
         if *committed {
             return Ok(());
         }
-        
+
         let conn = self.conn.lock().unwrap();
         conn.execute("ROLLBACK", [])?;
         *committed = true;
@@ -67,13 +67,13 @@ impl Drop for DuckDbTransaction {
 
 impl TransactionalBackend for DuckDb {
     type Transaction = DuckDbTransaction;
-    
+
     fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error> {
         let mut conn = self.connect()?;
         conn.execute("BEGIN TRANSACTION", [])?;
         Ok(DuckDbTransaction::new(conn))
     }
-    
+
     fn begin_read_transaction(&self) -> Result<Self::Transaction, Self::Error> {
         // DuckDB doesn't distinguish between read and write transactions
         // at the BEGIN level, so we use the same implementation
@@ -93,7 +93,7 @@ impl TransactionalKvBackend for DuckDb {
         // and use its connection
         self.get(request).await
     }
-    
+
     async fn set_in_transaction(
         &self,
         transaction_id: &str,
@@ -102,7 +102,7 @@ impl TransactionalKvBackend for DuckDb {
         // For now, we'll use the regular set implementation
         self.set(request).await
     }
-    
+
     async fn delete_in_transaction(
         &self,
         transaction_id: &str,

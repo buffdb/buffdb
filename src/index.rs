@@ -102,7 +102,7 @@ impl SecondaryIndex {
         match self.config.index_type {
             IndexType::Hash => {
                 let mut index = self.hash_index.write().unwrap();
-                
+
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
                         if !existing_keys.is_empty() && !existing_keys.contains(&key) {
@@ -113,12 +113,12 @@ impl SecondaryIndex {
                         }
                     }
                 }
-                
+
                 index.entry(value).or_insert_with(HashSet::new).insert(key);
             }
             IndexType::BTree => {
                 let mut index = self.btree_index.write().unwrap();
-                
+
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
                         if !existing_keys.is_empty() && !existing_keys.contains(&key) {
@@ -129,7 +129,7 @@ impl SecondaryIndex {
                         }
                     }
                 }
-                
+
                 index.entry(value).or_insert_with(HashSet::new).insert(key);
             }
             _ => {
@@ -137,7 +137,7 @@ impl SecondaryIndex {
                 return Err(IndexError::UnsupportedIndexType);
             }
         }
-        
+
         Ok(())
     }
 
@@ -164,7 +164,7 @@ impl SecondaryIndex {
             }
             _ => return Err(IndexError::UnsupportedIndexType),
         }
-        
+
         Ok(())
     }
 
@@ -193,11 +193,11 @@ impl SecondaryIndex {
             IndexType::BTree => {
                 let index = self.btree_index.read().unwrap();
                 let mut result = HashSet::new();
-                
+
                 for (_, keys) in index.range(start.clone()..=end.clone()) {
                     result.extend(keys.iter().cloned());
                 }
-                
+
                 Ok(result)
             }
             _ => Err(IndexError::OperationNotSupported {
@@ -224,13 +224,13 @@ impl IndexManager {
     /// Create a new index
     pub fn create_index(&self, config: IndexConfig) -> Result<(), IndexError> {
         let mut indexes = self.indexes.write().unwrap();
-        
+
         if indexes.contains_key(&config.name) {
             return Err(IndexError::IndexAlreadyExists {
                 name: config.name.clone(),
             });
         }
-        
+
         indexes.insert(config.name.clone(), SecondaryIndex::new(config));
         Ok(())
     }
@@ -238,13 +238,13 @@ impl IndexManager {
     /// Drop an index
     pub fn drop_index(&self, name: &str) -> Result<(), IndexError> {
         let mut indexes = self.indexes.write().unwrap();
-        
+
         if indexes.remove(name).is_none() {
             return Err(IndexError::IndexNotFound {
                 name: name.to_string(),
             });
         }
-        
+
         Ok(())
     }
 
@@ -266,31 +266,31 @@ impl IndexManager {
         new_value: &str,
     ) -> Result<(), IndexError> {
         let indexes = self.indexes.read().unwrap();
-        
+
         for (_, index) in indexes.iter() {
             // Remove old value from index if it exists
             if let Some(old) = old_value {
                 let old_index_value = IndexValue::String(old.to_string());
                 index.remove(key, &old_index_value)?;
             }
-            
+
             // Add new value to index
             let new_index_value = IndexValue::String(new_value.to_string());
             index.insert(key.to_string(), new_index_value)?;
         }
-        
+
         Ok(())
     }
 
     /// Remove a key from all indexes
     pub fn remove_from_indexes(&self, key: &str, value: &str) -> Result<(), IndexError> {
         let indexes = self.indexes.read().unwrap();
-        
+
         for (_, index) in indexes.iter() {
             let index_value = IndexValue::String(value.to_string());
             index.remove(key, &index_value)?;
         }
-        
+
         Ok(())
     }
 }
@@ -300,18 +300,21 @@ impl IndexManager {
 pub enum IndexError {
     #[error("Index '{name}' already exists")]
     IndexAlreadyExists { name: String },
-    
+
     #[error("Index '{name}' not found")]
     IndexNotFound { name: String },
-    
+
     #[error("Unique constraint violation on index '{index}' for value '{value}'")]
     UniqueConstraintViolation { index: String, value: String },
-    
+
     #[error("Unsupported index type")]
     UnsupportedIndexType,
-    
+
     #[error("Operation '{operation}' not supported for index type '{index_type}'")]
-    OperationNotSupported { operation: String, index_type: String },
+    OperationNotSupported {
+        operation: String,
+        index_type: String,
+    },
 }
 
 #[cfg(test)]
@@ -326,23 +329,35 @@ mod tests {
             unique: false,
             filter: None,
         };
-        
+
         let index = SecondaryIndex::new(config);
-        
+
         // Insert some values
-        index.insert("key1".to_string(), IndexValue::String("value1".to_string())).unwrap();
-        index.insert("key2".to_string(), IndexValue::String("value1".to_string())).unwrap();
-        index.insert("key3".to_string(), IndexValue::String("value2".to_string())).unwrap();
-        
+        index
+            .insert("key1".to_string(), IndexValue::String("value1".to_string()))
+            .unwrap();
+        index
+            .insert("key2".to_string(), IndexValue::String("value1".to_string()))
+            .unwrap();
+        index
+            .insert("key3".to_string(), IndexValue::String("value2".to_string()))
+            .unwrap();
+
         // Find by exact value
-        let keys = index.find_exact(&IndexValue::String("value1".to_string())).unwrap();
+        let keys = index
+            .find_exact(&IndexValue::String("value1".to_string()))
+            .unwrap();
         assert_eq!(keys.len(), 2);
         assert!(keys.contains("key1"));
         assert!(keys.contains("key2"));
-        
+
         // Remove a key
-        index.remove("key1", &IndexValue::String("value1".to_string())).unwrap();
-        let keys = index.find_exact(&IndexValue::String("value1".to_string())).unwrap();
+        index
+            .remove("key1", &IndexValue::String("value1".to_string()))
+            .unwrap();
+        let keys = index
+            .find_exact(&IndexValue::String("value1".to_string()))
+            .unwrap();
         assert_eq!(keys.len(), 1);
         assert!(keys.contains("key2"));
     }
@@ -355,17 +370,27 @@ mod tests {
             unique: false,
             filter: None,
         };
-        
+
         let index = SecondaryIndex::new(config);
-        
+
         // Insert numeric values
-        index.insert("key1".to_string(), IndexValue::Integer(10)).unwrap();
-        index.insert("key2".to_string(), IndexValue::Integer(20)).unwrap();
-        index.insert("key3".to_string(), IndexValue::Integer(30)).unwrap();
-        index.insert("key4".to_string(), IndexValue::Integer(40)).unwrap();
-        
+        index
+            .insert("key1".to_string(), IndexValue::Integer(10))
+            .unwrap();
+        index
+            .insert("key2".to_string(), IndexValue::Integer(20))
+            .unwrap();
+        index
+            .insert("key3".to_string(), IndexValue::Integer(30))
+            .unwrap();
+        index
+            .insert("key4".to_string(), IndexValue::Integer(40))
+            .unwrap();
+
         // Range query
-        let keys = index.find_range(&IndexValue::Integer(15), &IndexValue::Integer(35)).unwrap();
+        let keys = index
+            .find_range(&IndexValue::Integer(15), &IndexValue::Integer(35))
+            .unwrap();
         assert_eq!(keys.len(), 2);
         assert!(keys.contains("key2"));
         assert!(keys.contains("key3"));
@@ -379,17 +404,30 @@ mod tests {
             unique: true,
             filter: None,
         };
-        
+
         let index = SecondaryIndex::new(config);
-        
+
         // Insert first value
-        index.insert("key1".to_string(), IndexValue::String("unique_value".to_string())).unwrap();
-        
+        index
+            .insert(
+                "key1".to_string(),
+                IndexValue::String("unique_value".to_string()),
+            )
+            .unwrap();
+
         // Try to insert duplicate value with different key
-        let result = index.insert("key2".to_string(), IndexValue::String("unique_value".to_string()));
+        let result = index.insert(
+            "key2".to_string(),
+            IndexValue::String("unique_value".to_string()),
+        );
         assert!(result.is_err());
-        
+
         // Same key should be allowed
-        index.insert("key1".to_string(), IndexValue::String("unique_value".to_string())).unwrap();
+        index
+            .insert(
+                "key1".to_string(),
+                IndexValue::String("unique_value".to_string()),
+            )
+            .unwrap();
     }
 }

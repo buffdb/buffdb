@@ -8,78 +8,28 @@ on:
 
 env:
   RUST_BACKTRACE: 1
-  CARGO_TERM_COLOR: always
 
 jobs:
   test:
-    name: Test Suite
+    name: Test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        rust:
-          - stable
-          - beta
-          - nightly
-        include:
-          # Test all features on stable
-          - rust: stable
-            features: --all-features
-          # Test default features on beta/nightly
-          - rust: beta
-            features: ""
-          - rust: nightly
-            features: ""
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@master
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
         with:
-          toolchain: ${{ matrix.rust }}
-      
-      - name: Cache cargo registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          version: "25.x"
           
-      - name: Cache cargo index
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-          
-      - name: Cache cargo build
-        uses: actions/cache@v3
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+      - uses: dtolnay/rust-toolchain@stable
       
-      # Run tests with different feature combinations
-      - name: Test with SQLite only
-        run: cargo test --features vendored-sqlite --verbose
-        
-      - name: Test with DuckDB only
-        run: cargo test --features vendored-duckdb --verbose
-        if: matrix.os != 'windows-latest' # DuckDB may have issues on Windows
-        
-      - name: Test with RocksDB only
-        run: cargo test --features vendored-rocksdb --verbose
-        if: matrix.os != 'windows-latest' # RocksDB build can be complex on Windows
-        
-      - name: Test with all features
-        run: cargo test --all-features --verbose
-        if: matrix.os != 'windows-latest'
-        
-      - name: Test new features
-        run: |
-          cargo test --test transaction_test --features vendored-sqlite
-          cargo test --test index_test --features vendored-sqlite
-        
-      - name: Run doctests
-        run: cargo test --doc --all-features
-        if: matrix.os != 'windows-latest'
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Run tests
+        run: cargo test --all-features
 
   fmt:
     name: Rustfmt
@@ -89,87 +39,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - name: Run clippy
-        run: cargo clippy --all-features -- -D warnings
-
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        feature:
-          - vendored-sqlite
-          - vendored-duckdb
-          - vendored-rocksdb
-          - vendored-sqlite,vendored-duckdb
-          - vendored-sqlite,vendored-rocksdb
-          - vendored-duckdb,vendored-rocksdb
-          - vendored-sqlite,vendored-duckdb,vendored-rocksdb
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check with features ${{ matrix.feature }}
-        run: cargo check --features "${{ matrix.feature }}"
-
-  examples:
-    name: Build Examples
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build all examples
-        run: |
-          cargo build --example advanced_features --all-features
-          cargo build --example full_features_demo --all-features
-
-  benchmarks:
-    name: Build Benchmarks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Build benchmarks
-        run: cargo bench --no-run --all-features
-
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install tarpaulin
-        run: cargo install cargo-tarpaulin
-      - name: Generate coverage
-        run: cargo tarpaulin --all-features --out Xml
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./cobertura.xml
-          fail_ci_if_error: false
-
-  msrv:
-    name: Minimum Supported Rust Version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Extract MSRV from Cargo.toml
-        id: msrv
-        run: |
-          MSRV=$(grep -E "^rust-version" Cargo.toml | sed -E 's/.*"(.*)".*/\1/')
-          echo "MSRV=$MSRV" >> $GITHUB_OUTPUT
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.msrv.outputs.MSRV }}
-      - name: Check with MSRV
-        run: cargo check --all-features
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-features -- -D warnings

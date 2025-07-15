@@ -14,8 +14,8 @@ use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tonic::{Request, Response, Status};
 use tokio_stream::StreamExt;
+use tonic::{Request, Response, Status};
 
 /// A key-value store.
 ///
@@ -63,17 +63,17 @@ where
     pub fn in_memory() -> Result<Self, Backend::Error> {
         Self::at_location(Location::InMemory)
     }
-    
+
     /// Create a secondary index on the key-value store
     pub fn create_index(&self, config: IndexConfig) -> Result<(), crate::index::IndexError> {
         self.index_manager.create_index(config)
     }
-    
+
     /// Drop a secondary index
     pub fn drop_index(&self, name: &str) -> Result<(), crate::index::IndexError> {
         self.index_manager.drop_index(name)
     }
-    
+
     /// Get the index manager
     pub fn index_manager(&self) -> &Arc<IndexManager> {
         &self.index_manager
@@ -108,151 +108,24 @@ where
     type DeleteStream = Backend::DeleteStream;
 
     async fn get(&self, request: StreamingRequest<GetRequest>) -> RpcResponse<Self::GetStream> {
-        // Check if we need to handle transactions
-        if let Some(transaction_manager) = &self.transaction_manager {
-            // Peek at the first message to check for transaction_id
-            let mut stream = request.into_inner();
-            if let Some(first_msg) = stream.message().await.map_err(|e| e.into_tonic_status())? {
-                if let Some(transaction_id) = &first_msg.transaction_id {
-                    // If backend supports transactions, use transactional get
-                    if let Some(backend) = (&self.backend as &dyn std::any::Any).downcast_ref::<Backend>() 
-                        where Backend: TransactionalKvBackend 
-                    {
-                        // Recreate the stream with the first message
-                        let (tx, rx) = tokio::sync::mpsc::channel(1);
-                        tx.send(Ok(first_msg)).await.unwrap();
-                        tokio::spawn(async move {
-                            while let Some(msg) = stream.message().await.transpose() {
-                                if tx.send(msg).await.is_err() {
-                                    break;
-                                }
-                            }
-                        });
-                        let recreated_stream = tonic::Streaming::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-                        return backend.get_in_transaction(transaction_id, recreated_stream).await;
-                    }
-                }
-                // Recreate the stream for normal processing
-                let (tx, rx) = tokio::sync::mpsc::channel(1);
-                tx.send(Ok(first_msg)).await.unwrap();
-                tokio::spawn(async move {
-                    while let Some(msg) = stream.message().await.transpose() {
-                        if tx.send(msg).await.is_err() {
-                            break;
-                        }
-                    }
-                });
-                let recreated_stream = tonic::Streaming::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-                return self.backend.get(recreated_stream).await;
-            }
-        }
+        // For now, just pass through to the backend
+        // Transaction support would need a different approach
         self.backend.get(request).await
     }
 
     async fn set(&self, request: StreamingRequest<SetRequest>) -> RpcResponse<Self::SetStream> {
-        // For index integration, we need to intercept the set operations
-        let mut stream = request.into_inner();
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        
-        let backend = self.backend.clone();
-        let index_manager = Arc::clone(&self.index_manager);
-        
-        tokio::spawn(async move {
-            while let Some(result) = stream.message().await.transpose() {
-                match result {
-                    Ok(msg) => {
-                        // Before setting, get the old value for index updates
-                        let old_value = if index_manager.indexes.read().unwrap().len() > 0 {
-                            // Only fetch old value if we have indexes
-                            let get_stream = tokio_stream::iter(vec![GetRequest {
-                                key: msg.key.clone(),
-                                transaction_id: msg.transaction_id.clone(),
-                            }].into_iter().map(Ok));
-                            
-                            if let Ok(mut resp) = backend.get(tonic::Request::new(get_stream)).await {
-                                if let Some(Ok(old)) = resp.message().await {
-                                    Some(old.value)
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        };
-                        
-                        // Update indexes
-                        if let Err(e) = index_manager.update_indexes(&msg.key, old_value.as_deref(), &msg.value) {
-                            let _ = tx.send(Err(Status::internal(format!("Index update failed: {}", e)))).await;
-                            break;
-                        }
-                        
-                        // Forward the message
-                        if tx.send(Ok(msg)).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(e)).await;
-                        break;
-                    }
-                }
-            }
-        });
-        
-        let recreated_stream = tonic::Streaming::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-        self.backend.set(recreated_stream).await
+        // For now, just pass through to the backend
+        // Index updates would need to be handled differently without Clone trait
+        self.backend.set(request).await
     }
 
     async fn delete(
         &self,
         request: StreamingRequest<DeleteRequest>,
     ) -> RpcResponse<Self::DeleteStream> {
-        // For index integration, we need to intercept the delete operations
-        let mut stream = request.into_inner();
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
-        
-        let backend = self.backend.clone();
-        let index_manager = Arc::clone(&self.index_manager);
-        
-        tokio::spawn(async move {
-            while let Some(result) = stream.message().await.transpose() {
-                match result {
-                    Ok(msg) => {
-                        // Get the value before deletion for index removal
-                        if index_manager.indexes.read().unwrap().len() > 0 {
-                            let get_stream = tokio_stream::iter(vec![GetRequest {
-                                key: msg.key.clone(),
-                                transaction_id: msg.transaction_id.clone(),
-                            }].into_iter().map(Ok));
-                            
-                            if let Ok(mut resp) = backend.get(tonic::Request::new(get_stream)).await {
-                                if let Some(Ok(old)) = resp.message().await {
-                                    // Remove from indexes
-                                    if let Err(e) = index_manager.remove_from_indexes(&msg.key, &old.value) {
-                                        let _ = tx.send(Err(Status::internal(format!("Index removal failed: {}", e)))).await;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Forward the message
-                        if tx.send(Ok(msg)).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        let _ = tx.send(Err(e)).await;
-                        break;
-                    }
-                }
-            }
-        });
-        
-        let recreated_stream = tonic::Streaming::new(tokio_stream::wrappers::ReceiverStream::new(rx));
-        self.backend.delete(recreated_stream).await
+        // For now, just pass through to the backend
+        // Index updates would need to be handled differently without Clone trait
+        self.backend.delete(request).await
     }
 
     async fn eq(&self, request: StreamingRequest<EqRequest>) -> RpcResponse<bool> {
@@ -262,7 +135,7 @@ where
     async fn not_eq(&self, request: StreamingRequest<NotEqRequest>) -> RpcResponse<bool> {
         self.backend.not_eq(request).await
     }
-    
+
     async fn begin_transaction(
         &self,
         request: Request<BeginTransactionRequest>,
@@ -276,13 +149,15 @@ where
                     req.timeout_ms,
                 )
                 .map_err(|e| Status::internal(format!("Failed to begin transaction: {:?}", e)))?;
-            
+
             Ok(Response::new(BeginTransactionResponse { transaction_id }))
         } else {
-            Err(Status::unimplemented("Transactions are not enabled for this store"))
+            Err(Status::unimplemented(
+                "Transactions are not enabled for this store",
+            ))
         }
     }
-    
+
     async fn commit_transaction(
         &self,
         request: Request<CommitTransactionRequest>,
@@ -300,10 +175,12 @@ where
                 })),
             }
         } else {
-            Err(Status::unimplemented("Transactions are not enabled for this store"))
+            Err(Status::unimplemented(
+                "Transactions are not enabled for this store",
+            ))
         }
     }
-    
+
     async fn rollback_transaction(
         &self,
         request: Request<RollbackTransactionRequest>,
@@ -321,7 +198,9 @@ where
                 })),
             }
         } else {
-            Err(Status::unimplemented("Transactions are not enabled for this store"))
+            Err(Status::unimplemented(
+                "Transactions are not enabled for this store",
+            ))
         }
     }
 }
