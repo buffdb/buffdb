@@ -54,10 +54,10 @@ mod helpers;
 #[cfg(rust_analyzer)]
 mod blob;
 #[cfg(rust_analyzer)]
+mod index_test;
+#[cfg(rust_analyzer)]
 mod kv;
 #[cfg(rust_analyzer)]
 mod query;
 #[cfg(rust_analyzer)]
 mod transaction_test;
-#[cfg(rust_analyzer)]
-mod index_test;
