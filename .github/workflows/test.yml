@@ -22,21 +22,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust }}
           
-      - name: Install dependencies (Ubuntu)
+      - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libclang-dev protobuf-compiler
+          sudo apt-get install -y libclang-dev
           
-      - name: Install dependencies (macOS)
+      - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm protobuf
+          brew install llvm
           
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -82,12 +88,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
+      - name: Install protoc
+        uses: arduino/setup-protoc@v3
+        with:
+          version: "25.x"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+          
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libclang-dev protobuf-compiler
+          sudo apt-get install -y libclang-dev
+          
       - name: Run clippy
         run: cargo clippy --features vendored-sqlite -- -D warnings
