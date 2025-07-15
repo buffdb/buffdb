@@ -1,10 +1,10 @@
 //! Integration tests for transaction support
 
 use buffdb::{
-    backend::Sqlite,
     store::KvStore,
     proto::kv::*,
     Location,
+    service::kv::KvRpc,
 };
 use std::time::Duration;
 use tokio_stream::StreamExt;
@@ -12,7 +12,7 @@ use tokio_stream::StreamExt;
 #[tokio::test]
 async fn test_basic_transaction_commit() {
     // Create a store with transaction support
-    let store = KvStore::<Sqlite>::with_transactions(
+    let store = KvStore::<Backend>::with_transactions(
         Location::InMemory,
         Duration::from_secs(30),
     ).unwrap();

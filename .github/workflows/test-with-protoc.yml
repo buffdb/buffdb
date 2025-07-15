@@ -53,33 +53,18 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           
-      # Test core functionality
-      - name: Run core tests
-        run: cargo test --features vendored-sqlite
+      # Run all tests
+      - name: Run all tests
+        run: cargo test --all --features vendored-sqlite
         
-      # Test new transaction features
-      - name: Test transaction support
+      # Run unit tests for specific modules
+      - name: Run unit tests
         run: |
-          cargo test transaction --features vendored-sqlite
-          cargo test --test transaction_test --features vendored-sqlite || true
-          
-      # Test indexing features  
-      - name: Test indexing system
-        run: |
-          cargo test index --features vendored-sqlite
-          cargo test --test index_test --features vendored-sqlite || true
-          
-      # Test FTS module
-      - name: Test full-text search
-        run: cargo test fts --features vendored-sqlite
-        
-      # Test JSON store
-      - name: Test JSON document store
-        run: cargo test json_store --features vendored-sqlite
-        
-      # Test MVCC
-      - name: Test MVCC
-        run: cargo test mvcc --features vendored-sqlite
+          cargo test --lib transaction --features vendored-sqlite
+          cargo test --lib index --features vendored-sqlite
+          cargo test --lib fts --features vendored-sqlite
+          cargo test --lib json_store --features vendored-sqlite
+          cargo test --lib mvcc --features vendored-sqlite
         
       # Build examples to ensure they compile
       - name: Build examples

@@ -12,6 +12,12 @@ mod sqlite {
     mod query {
         include!("query.rs");
     }
+    mod transaction {
+        include!("transaction_test.rs");
+    }
+    mod index {
+        include!("index_test.rs");
+    }
 }
 
 mod duckdb {
@@ -51,3 +57,7 @@ mod blob;
 mod kv;
 #[cfg(rust_analyzer)]
 mod query;
+#[cfg(rust_analyzer)]
+mod transaction_test;
+#[cfg(rust_analyzer)]
+mod index_test;
