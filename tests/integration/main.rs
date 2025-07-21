@@ -36,7 +36,6 @@ mod duckdb {
     }
 }
 
-
 mod helpers;
 
 #[cfg(rust_analyzer)]

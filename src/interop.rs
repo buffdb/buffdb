@@ -154,7 +154,6 @@ impl IntoTonicStatus for rusqlite::Error {
     }
 }
 
-
 impl IntoTonicStatus for prost::UnknownEnumValue {
     fn into_tonic_status(self) -> Status {
         Status::invalid_argument(format!("unknown enumeration value {}", self.0))

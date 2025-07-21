@@ -69,6 +69,7 @@ tracing-subscriber = { version = "0.3.18", optional = true }
 uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0"
 ordered-float = "4.2"
+serde_json = "1.0.141"
 
 [build-dependencies]
 tonic-build = "0.12.1"
