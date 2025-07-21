@@ -98,7 +98,7 @@ impl SecondaryIndex {
     }
 
     /// Add an entry to the index
-    pub fn insert(&self, key: String, value: IndexValue) -> Result<(), IndexError> {
+    pub fn insert(&self, key: &str, value: IndexValue) -> Result<(), IndexError> {
         match self.config.index_type {
             IndexType::Hash => {
                 let mut index = self.hash_index.write().unwrap();
@@ -114,7 +114,7 @@ impl SecondaryIndex {
                     }
                 }
 
-                index.entry(value).or_insert_with(HashSet::new).insert(key);
+                index.entry(value).or_insert_with(HashSet::new).insert(key.to_string());
             }
             IndexType::BTree => {
                 let mut index = self.btree_index.write().unwrap();
@@ -130,7 +130,7 @@ impl SecondaryIndex {
                     }
                 }
 
-                index.entry(value).or_insert_with(HashSet::new).insert(key);
+                index.entry(value).or_insert_with(HashSet::new).insert(key.to_string());
             }
             _ => {
                 // TODO: Implement other index types
@@ -276,7 +276,7 @@ impl IndexManager {
 
             // Add new value to index
             let new_index_value = IndexValue::String(new_value.to_string());
-            index.insert(key.to_string(), new_index_value)?;
+            index.insert(key, new_index_value)?;
         }
 
         Ok(())
@@ -334,13 +334,13 @@ mod tests {
 
         // Insert some values
         index
-            .insert("key1".to_string(), IndexValue::String("value1".to_string()))
+            .insert("key1", IndexValue::String("value1".to_string()))
             .unwrap();
         index
-            .insert("key2".to_string(), IndexValue::String("value1".to_string()))
+            .insert("key2", IndexValue::String("value1".to_string()))
             .unwrap();
         index
-            .insert("key3".to_string(), IndexValue::String("value2".to_string()))
+            .insert("key3", IndexValue::String("value2".to_string()))
             .unwrap();
 
         // Find by exact value
@@ -375,16 +375,16 @@ mod tests {
 
         // Insert numeric values
         index
-            .insert("key1".to_string(), IndexValue::Integer(10))
+            .insert("key1", IndexValue::Integer(10))
             .unwrap();
         index
-            .insert("key2".to_string(), IndexValue::Integer(20))
+            .insert("key2", IndexValue::Integer(20))
             .unwrap();
         index
-            .insert("key3".to_string(), IndexValue::Integer(30))
+            .insert("key3", IndexValue::Integer(30))
             .unwrap();
         index
-            .insert("key4".to_string(), IndexValue::Integer(40))
+            .insert("key4", IndexValue::Integer(40))
             .unwrap();
 
         // Range query
@@ -410,14 +410,14 @@ mod tests {
         // Insert first value
         index
             .insert(
-                "key1".to_string(),
+                "key1",
                 IndexValue::String("unique_value".to_string()),
             )
             .unwrap();
 
         // Try to insert duplicate value with different key
         let result = index.insert(
-            "key2".to_string(),
+            "key2",
             IndexValue::String("unique_value".to_string()),
         );
         assert!(result.is_err());
@@ -425,7 +425,7 @@ mod tests {
         // Same key should be allowed
         index
             .insert(
-                "key1".to_string(),
+                "key1",
                 IndexValue::String("unique_value".to_string()),
             )
             .unwrap();
