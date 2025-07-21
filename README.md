@@ -350,7 +350,6 @@ buffdb run --addr [::1]:9313 --kv-store kv.db --blob-store blob.db
 |---------|-------------|-------------|----------|
 | SQLite | `vendored-sqlite` | Balanced | General purpose |
 | DuckDB | `vendored-duckdb` | Analytics | OLAP workloads |
-| RocksDB | `vendored-rocksdb` | High write | Heavy writes |
 
 ## 🏗️ Architecture
 
@@ -365,8 +364,7 @@ BuffDB combines embedded database efficiency with network accessibility:
                               ┌──────┴──────┐
                               │   Backend   │
                               │  (SQLite/   │
-                              │   DuckDB/   │
-                              │  RocksDB)   │
+                              │   DuckDB)   │
                               └─────────────┘
 ```
 
@@ -449,7 +447,6 @@ This example is present in `examples/typescript`. To run it, you need to have No
 | ------- | -------------- | ----------------- | ---------------------------- | ------------ |
 | SQLite  | Full support   | ✅                | `sqlite` (`vendored-sqlite`) | `-b sqlite`  |
 | DuckDB  | Partial        | ✅                | `duckdb` (`vendored-duckdb`) | `-b duckdb`  |
-| RocksDB | Partial        | ❌                | (`vendored-rocksdb`) only    | `-b rocksdb` |
 
 Blockers for full DuckDB support include [duckdb/duckdb-rs#368](https://github.com/duckdb/duckdb-rs/issues/368),
 but other issues are necessary to have best performance.

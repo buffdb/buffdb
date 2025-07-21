@@ -2,9 +2,9 @@
 //!
 //! For usage, run `cargo run -- --help`.
 
-#[cfg(not(any(feature = "duckdb", feature = "sqlite", feature = "rocksdb")))]
+#[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
 compile_error!(
-    "at least one backend must be enabled (options are `duckdb`, `sqlite`, and `rocksdb`)"
+    "at least one backend must be enabled (options are `duckdb` and `sqlite`)"
 );
 
 mod cli;
@@ -14,8 +14,6 @@ use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunAr
 use crate::tracing_shim::debug;
 #[cfg(feature = "duckdb")]
 use buffdb::backend::DuckDb;
-#[cfg(feature = "rocksdb")]
-use buffdb::backend::RocksDb;
 #[cfg(feature = "sqlite")]
 use buffdb::backend::Sqlite;
 use buffdb::backend::{BlobBackend, DatabaseBackend, KvBackend};
@@ -65,12 +63,6 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 Command::Run(args) => run::<Sqlite>(args).await,
                 Command::Kv(args) => kv::<Sqlite>(args).await,
                 Command::Blob(args) => blob::<Sqlite>(args).await,
-            },
-            #[cfg(feature = "rocksdb")]
-            Backend::RocksDb => match command {
-                Command::Run(args) => run::<RocksDb>(args).await,
-                Command::Kv(args) => kv::<RocksDb>(args).await,
-                Command::Blob(args) => blob::<RocksDb>(args).await,
             },
         }
     };
