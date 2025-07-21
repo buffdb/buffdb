@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional") // hyperium/tonic#1331
         .build_server(true)
-        .compile(
+        .compile_protos(
             &[
                 "proto/blob.proto",
                 "proto/kv.proto",
@@ -14,9 +14,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             &["proto"],
         )?;
-    println!("cargo::rustc-check-cfg=cfg(feature, values(\"rocksdb\"))");
-    if cfg!(feature = "vendored-rocksdb") {
-        println!("cargo::rustc-cfg=feature=\"rocksdb\"");
-    }
     Ok(())
 }

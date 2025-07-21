@@ -30,7 +30,7 @@ mod duckdb_helper;
 pub mod fts;
 pub mod index;
 pub mod interop;
-pub mod json_store;
+// pub mod json_store; // Temporarily disabled - needs refactoring
 mod kv;
 mod location;
 pub mod mvcc;
@@ -142,5 +142,5 @@ pub use prost_types;
 /// A response from a gRPC server.
 pub type RpcResponse<T> = Result<tonic::Response<T>, tonic::Status>;
 type StreamingRequest<T> = tonic::Request<tonic::Streaming<T>>;
-#[cfg(any(feature = "duckdb", feature = "sqlite", feature = "rocksdb"))]
+#[cfg(any(feature = "duckdb", feature = "sqlite"))]
 type DynStream<T> = std::pin::Pin<Box<dyn futures::Stream<Item = T> + Send + 'static>>;

@@ -12,6 +12,7 @@ use crate::server::kv::KvServer;
 use crate::server::query::QueryServer;
 use crate::store::{BlobStore, KvStore};
 use crate::tracing_shim::info;
+use crate::transaction;
 use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::fmt;
@@ -103,7 +104,9 @@ macro_rules! declare_clients {
             L: Into<Location> + Send + fmt::Debug,
             Backend: DatabaseBackend<Error: IntoTonicStatus>
                 + $backend<$($bounds)*>
-                + 'static
+                + transaction::TransactionalBackend
+                + 'static,
+            Backend::Error: std::fmt::Display + std::fmt::Debug
         {
             let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);

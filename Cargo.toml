@@ -35,7 +35,7 @@ path = "benches/main.rs"
 harness = false
 
 [features]
-default = ["vendored-duckdb", "vendored-sqlite", "vendored-rocksdb"]
+default = ["vendored-duckdb", "vendored-sqlite"]
 binary = [
     "dep:clap",
     "dep:tracing-subscriber", # no way to make this contingent on tracing also being enabled
@@ -45,10 +45,10 @@ sqlite = ["dep:rusqlite"]
 tracing = ["dep:tracing", "dep:tracing-futures"]
 vendored-duckdb = ["duckdb", "duckdb/bundled"]
 vendored-sqlite = ["sqlite", "rusqlite/bundled"]
-vendored-rocksdb = ["dep:rocksdb", "dep:rand"]
 
 [dependencies]
 async-stream = "0.3.5"
+async-trait = "0.1.81"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
 crossbeam = "0.8.4"
 duckdb = { version = "1.0.0", optional = true }
@@ -57,11 +57,6 @@ hyper-util = "0.1.6"
 prost = "0.13.1"
 prost-types = "0.13.1"
 rusqlite = { version = "0.32.1", optional = true }
-rocksdb = { package = "rust-rocksdb", version = "0.28.1", default-features = false, optional = true }
-rand = { version = "0.8.5", default-features = false, optional = true, features = [
-    "std",
-    "small_rng",
-] }
 sha2 = "0.10.8"
 tokio = { version = "1", features = ["rt-multi-thread", "fs"] }
 tokio-stream = "0.1.15"
@@ -75,6 +70,9 @@ tracing-subscriber = { version = "0.3.18", optional = true }
 uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0"
 ordered-float = "4.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.141"
+chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
 tonic-build = "0.12.1"
@@ -82,7 +80,6 @@ tonic-build = "0.12.1"
 [dev-dependencies]
 anyhow = "1.0.86"
 criterion = { version = "0.5.1", features = ["async_tokio"] }
-criterion-cycles-per-byte = "0.6.1"
 rand = "0.8.5"
 serial_test = "3.1.1"
 tokio = "1"

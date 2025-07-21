@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 /// Represents an active database transaction
 pub trait Transaction: Send + Sync {
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: std::error::Error + std::fmt::Display + Send + Sync + 'static;
 
     /// Commit the transaction, making all changes permanent
     fn commit(self) -> Result<(), Self::Error>;
@@ -16,7 +16,7 @@ pub trait Transaction: Send + Sync {
 
 /// Extended trait for database backends that support transactions
 pub trait TransactionalBackend: crate::backend::DatabaseBackend {
-    type Transaction: Transaction<Error = Self::Error>;
+    type Transaction: Transaction<Error = Self::Error> + std::fmt::Debug;
 
     /// Begin a new transaction
     fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error>;
@@ -30,12 +30,16 @@ pub trait TransactionalBackend: crate::backend::DatabaseBackend {
 }
 
 /// Manages transaction lifecycle and state
+#[derive(Debug)]
 pub struct TransactionManager<Backend: TransactionalBackend> {
     transactions: Arc<Mutex<HashMap<String, Backend::Transaction>>>,
     default_timeout: Duration,
 }
 
-impl<Backend: TransactionalBackend> TransactionManager<Backend> {
+impl<Backend: TransactionalBackend> TransactionManager<Backend>
+where
+    Backend::Error: std::fmt::Display,
+{
     /// Create a new transaction manager
     pub fn new(default_timeout: Duration) -> Self {
         Self {
@@ -132,14 +136,14 @@ pub trait TransactionalKvBackend: crate::backend::KvBackend + TransactionalBacke
     async fn set_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::kv::SetRequest>,
+        request: tonic::Streaming<crate::proto::kv::SetRequest>,
     ) -> crate::RpcResponse<Self::SetStream>;
 
     /// Delete a value within a transaction
     async fn delete_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::kv::DeleteRequest>,
+        request: tonic::Streaming<crate::proto::kv::DeleteRequest>,
     ) -> crate::RpcResponse<Self::DeleteStream>;
 }
 
@@ -150,27 +154,27 @@ pub trait TransactionalBlobBackend: crate::backend::BlobBackend + TransactionalB
     async fn get_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::blob::GetRequest>,
+        request: tonic::Streaming<crate::proto::blob::GetRequest>,
     ) -> crate::RpcResponse<Self::GetStream>;
 
     /// Store a blob within a transaction
     async fn store_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::blob::StoreRequest>,
+        request: tonic::Streaming<crate::proto::blob::StoreRequest>,
     ) -> crate::RpcResponse<Self::StoreStream>;
 
     /// Update a blob within a transaction
     async fn update_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::blob::UpdateRequest>,
+        request: tonic::Streaming<crate::proto::blob::UpdateRequest>,
     ) -> crate::RpcResponse<Self::UpdateStream>;
 
     /// Delete a blob within a transaction
     async fn delete_in_transaction(
         &self,
         transaction_id: &str,
-        request: tonic::Streaming<crate::blob::DeleteRequest>,
+        request: tonic::Streaming<crate::proto::blob::DeleteRequest>,
     ) -> crate::RpcResponse<Self::DeleteStream>;
 }

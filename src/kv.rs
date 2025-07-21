@@ -9,12 +9,12 @@ use crate::proto::kv::{
     RollbackTransactionRequest, RollbackTransactionResponse, SetRequest,
 };
 use crate::service::kv::KvRpc;
-use crate::transaction::{TransactionManager, TransactionalBackend, TransactionalKvBackend};
+use crate::transaction::{TransactionManager, TransactionalBackend};
 use crate::{Location, RpcResponse, StreamingRequest};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio_stream::StreamExt;
+// use tokio_stream::StreamExt; // Unused
 use tonic::{Request, Response, Status};
 
 /// A key-value store.
@@ -24,7 +24,7 @@ use tonic::{Request, Response, Status};
 /// protobuf server.
 #[must_use]
 #[derive(Debug)]
-pub struct KvStore<Backend> {
+pub struct KvStore<Backend: TransactionalBackend> {
     backend: Backend,
     transaction_manager: Option<Arc<TransactionManager<Backend>>>,
     index_manager: Arc<IndexManager>,
@@ -32,7 +32,8 @@ pub struct KvStore<Backend> {
 
 impl<Backend> KvStore<Backend>
 where
-    Backend: DatabaseBackend,
+    Backend: DatabaseBackend + TransactionalBackend,
+    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     /// Create a new key-value store at the given location. If not pre-existing, the store will not
     /// be initialized until the first connection is made.
@@ -83,6 +84,7 @@ where
 impl<Backend> KvStore<Backend>
 where
     Backend: TransactionalBackend,
+    Backend::Error: std::fmt::Display,
 {
     /// Create a new key-value store with transaction support.
     pub fn with_transactions(
@@ -101,7 +103,9 @@ where
 impl<Backend> KvRpc for KvStore<Backend>
 where
     Backend: KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
+        + TransactionalBackend
         + 'static,
+    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     type GetStream = Backend::GetStream;
     type SetStream = Backend::SetStream;
@@ -148,7 +152,7 @@ where
                     req.read_only.unwrap_or(false),
                     req.timeout_ms,
                 )
-                .map_err(|e| Status::internal(format!("Failed to begin transaction: {:?}", e)))?;
+                .map_err(|e| Status::internal(format!("Failed to begin transaction: {}", e)))?;
 
             Ok(Response::new(BeginTransactionResponse { transaction_id }))
         } else {

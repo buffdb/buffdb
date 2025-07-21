@@ -2,8 +2,8 @@
 //!
 //! For usage, run `cargo run -- --help`.
 
-#[cfg(not(any(feature = "duckdb", feature = "sqlite", feature = "rocksdb")))]
-compile_error!("at least one backend must be enabled (options are `duckdb`, `sqlite`, and `rocksdb`)");
+#[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
+compile_error!("at least one backend must be enabled (options are `duckdb` and `sqlite`)");
 
 mod cli;
 mod tracing_shim;
@@ -12,8 +12,6 @@ use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunAr
 use crate::tracing_shim::debug;
 #[cfg(feature = "duckdb")]
 use buffdb::backend::DuckDb;
-#[cfg(feature = "rocksdb")]
-use buffdb::backend::RocksDb;
 #[cfg(feature = "sqlite")]
 use buffdb::backend::Sqlite;
 use buffdb::backend::{BlobBackend, DatabaseBackend, KvBackend};
@@ -64,12 +62,6 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 Command::Kv(args) => kv::<Sqlite>(args).await,
                 Command::Blob(args) => blob::<Sqlite>(args).await,
             },
-            #[cfg(feature = "rocksdb")]
-            Backend::RocksDb => match command {
-                Command::Run(args) => run::<RocksDb>(args).await,
-                Command::Kv(args) => kv::<RocksDb>(args).await,
-                Command::Blob(args) => blob::<RocksDb>(args).await,
-            },
         }
     };
 
@@ -101,7 +93,9 @@ where
     Backend: DatabaseBackend<Error: IntoTonicStatus + std::error::Error>
         + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
+        + buffdb::transaction::TransactionalBackend
         + 'static,
+    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     if kv_store == blob_store {
         return Err(Box::new(ErrStr(
@@ -159,14 +153,15 @@ async fn kv<Backend>(
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
     Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send, Error: IntoTonicStatus>
-        + 'static,
+        + buffdb::transaction::TransactionalBackend + 'static,
+    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let mut client = transitive::kv_client::<_, Backend>(store).await?;
     match command {
         cli::KvCommand::Get { keys } => {
             let mut values = client
                 .get(stream::iter(
-                    keys.into_iter().map(|key| kv::GetRequest { key }),
+                    keys.into_iter().map(|key| kv::GetRequest { key, transaction_id: None }),
                 ))
                 .await?
                 .into_inner();
@@ -183,12 +178,12 @@ where
         }
         cli::KvCommand::Set { key, value } => {
             let _response = client
-                .set(stream::iter([kv::SetRequest { key, value }]))
+                .set(stream::iter([kv::SetRequest { key, value, transaction_id: None }]))
                 .await?;
         }
         cli::KvCommand::Delete { key } => {
             let _response = client
-                .delete(stream::iter([kv::DeleteRequest { key }]))
+                .delete(stream::iter([kv::DeleteRequest { key, transaction_id: None }]))
                 .await?;
         }
         cli::KvCommand::Eq { keys } => {
@@ -239,13 +234,14 @@ where
             UpdateStream: Send,
             DeleteStream: Send,
             Error: IntoTonicStatus,
-        > + 'static,
+        > + buffdb::transaction::TransactionalBackend + 'static,
+        Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
     match command {
         cli::BlobCommand::Get { id, mode } => {
             let blob: Vec<_> = client
-                .get(stream::iter([blob::GetRequest { id }]))
+                .get(stream::iter([blob::GetRequest { id, transaction_id: None }]))
                 .await?
                 .into_inner()
                 .collect()
@@ -283,6 +279,7 @@ where
                 .store(stream::iter([blob::StoreRequest {
                     bytes: read_file_or_stdin(file_path).await?,
                     metadata,
+                    transaction_id: None,
                 }]))
                 .await?
                 .into_inner()
@@ -306,6 +303,7 @@ where
                     bytes: Some(read_file_or_stdin(file_path).await?),
                     should_update_metadata: false,
                     metadata: None,
+                    transaction_id: None,
                 }]))
                 .await?;
         }
@@ -319,6 +317,7 @@ where
                     bytes: None,
                     should_update_metadata: true,
                     metadata,
+                    transaction_id: None,
                 }]))
                 .await?;
         }
@@ -336,12 +335,13 @@ where
                     bytes: Some(read_file_or_stdin(file_path).await?),
                     should_update_metadata: true,
                     metadata,
+                    transaction_id: None,
                 }]))
                 .await?;
         }
         cli::BlobCommand::Delete { id } => {
             let _response = client
-                .delete(stream::iter([blob::DeleteRequest { id }]))
+                .delete(stream::iter([blob::DeleteRequest { id, transaction_id: None }]))
                 .await?;
         }
         cli::BlobCommand::EqData { ids } => {

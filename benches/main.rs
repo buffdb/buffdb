@@ -8,13 +8,11 @@
 mod blob;
 mod kv;
 
-use criterion::measurement::Measurement;
 use criterion::Criterion;
 use std::time::Duration;
 
-fn criterion_config() -> Criterion<impl Measurement> {
+fn criterion_config() -> Criterion {
     Criterion::default()
-        .with_measurement(criterion_cycles_per_byte::CyclesPerByte)
         .measurement_time(Duration::from_secs(10))
         .configure_from_args()
 }

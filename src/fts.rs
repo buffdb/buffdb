@@ -3,8 +3,8 @@
 //! This module provides full-text search capabilities including tokenization,
 //! stemming, and ranked search results using BM25 scoring.
 
-use crate::index::{IndexError, IndexValue};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use crate::index::IndexError;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 /// Full-text search index
