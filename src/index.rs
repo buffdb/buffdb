@@ -114,7 +114,10 @@ impl SecondaryIndex {
                     }
                 }
 
-                index.entry(value).or_insert_with(HashSet::new).insert(key.to_string());
+                index
+                    .entry(value)
+                    .or_insert_with(HashSet::new)
+                    .insert(key.to_string());
             }
             IndexType::BTree => {
                 let mut index = self.btree_index.write().unwrap();
@@ -130,7 +133,10 @@ impl SecondaryIndex {
                     }
                 }
 
-                index.entry(value).or_insert_with(HashSet::new).insert(key.to_string());
+                index
+                    .entry(value)
+                    .or_insert_with(HashSet::new)
+                    .insert(key.to_string());
             }
             _ => {
                 // TODO: Implement other index types
@@ -374,18 +380,10 @@ mod tests {
         let index = SecondaryIndex::new(config);
 
         // Insert numeric values
-        index
-            .insert("key1", IndexValue::Integer(10))
-            .unwrap();
-        index
-            .insert("key2", IndexValue::Integer(20))
-            .unwrap();
-        index
-            .insert("key3", IndexValue::Integer(30))
-            .unwrap();
-        index
-            .insert("key4", IndexValue::Integer(40))
-            .unwrap();
+        index.insert("key1", IndexValue::Integer(10)).unwrap();
+        index.insert("key2", IndexValue::Integer(20)).unwrap();
+        index.insert("key3", IndexValue::Integer(30)).unwrap();
+        index.insert("key4", IndexValue::Integer(40)).unwrap();
 
         // Range query
         let keys = index
@@ -409,25 +407,16 @@ mod tests {
 
         // Insert first value
         index
-            .insert(
-                "key1",
-                IndexValue::String("unique_value".to_string()),
-            )
+            .insert("key1", IndexValue::String("unique_value".to_string()))
             .unwrap();
 
         // Try to insert duplicate value with different key
-        let result = index.insert(
-            "key2",
-            IndexValue::String("unique_value".to_string()),
-        );
+        let result = index.insert("key2", IndexValue::String("unique_value".to_string()));
         assert!(result.is_err());
 
         // Same key should be allowed
         index
-            .insert(
-                "key1",
-                IndexValue::String("unique_value".to_string()),
-            )
+            .insert("key1", IndexValue::String("unique_value".to_string()))
             .unwrap();
     }
 }
