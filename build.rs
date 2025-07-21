@@ -4,7 +4,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tonic_build::configure()
         .protoc_arg("--experimental_allow_proto3_optional") // hyperium/tonic#1331
         .build_server(true)
-        .compile(
+        .compile_protos(
             &[
                 "proto/blob.proto",
                 "proto/kv.proto",

@@ -86,7 +86,7 @@ impl TransactionalKvBackend for Sqlite {
     async fn get_in_transaction(
         &self,
         transaction_id: &str,
-        request: StreamingRequest<crate::kv::GetRequest>,
+        request: StreamingRequest<crate::proto::kv::GetRequest>,
     ) -> RpcResponse<Self::GetStream> {
         // For now, we'll use the regular get implementation
         // In a full implementation, we would look up the transaction by ID
@@ -97,7 +97,7 @@ impl TransactionalKvBackend for Sqlite {
     async fn set_in_transaction(
         &self,
         transaction_id: &str,
-        request: StreamingRequest<crate::kv::SetRequest>,
+        request: StreamingRequest<crate::proto::kv::SetRequest>,
     ) -> RpcResponse<Self::SetStream> {
         // For now, we'll use the regular set implementation
         self.set(request).await
@@ -106,7 +106,7 @@ impl TransactionalKvBackend for Sqlite {
     async fn delete_in_transaction(
         &self,
         transaction_id: &str,
-        request: StreamingRequest<crate::kv::DeleteRequest>,
+        request: StreamingRequest<crate::proto::kv::DeleteRequest>,
     ) -> RpcResponse<Self::DeleteStream> {
         // For now, we'll use the regular delete implementation
         self.delete(request).await

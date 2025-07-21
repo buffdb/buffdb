@@ -94,7 +94,7 @@ where
     pub fn create_json_index(
         &self,
         name: String,
-        json_path: String,
+        _json_path: String,
         index_type: IndexType,
         unique: bool,
     ) -> Result<(), crate::index::IndexError> {
@@ -112,7 +112,7 @@ where
     pub fn create_fts_index(
         &self,
         name: String,
-        json_path: String,
+        _json_path: String,
     ) -> Result<(), crate::index::IndexError> {
         let index_name = format!("{}_{}", self.collection, name);
         self.fts_manager.create_index(index_name)?;
@@ -138,7 +138,7 @@ pub struct JsonPath;
 
 impl JsonPath {
     /// Evaluate a JSONPath expression against a JSON value
-    pub fn query(json: &Value, path: &str) -> Result<Vec<&Value>, JsonStoreError> {
+    pub fn query<'a>(json: &'a Value, path: &str) -> Result<Vec<&'a Value>, JsonStoreError> {
         // Simple JSONPath implementation
         // Full implementation would use a proper JSONPath parser
 
@@ -507,9 +507,9 @@ where
 
     fn update_indexes(
         &self,
-        id: &str,
-        old_data: Option<&Value>,
-        new_data: &Value,
+        _id: &str,
+        _old_data: Option<&Value>,
+        _new_data: &Value,
     ) -> Result<(), JsonStoreError> {
         // In a real implementation, we would:
         // 1. Extract values from JSON paths configured in indexes
@@ -518,7 +518,7 @@ where
         Ok(())
     }
 
-    fn remove_from_indexes(&self, id: &str, data: &Value) -> Result<(), JsonStoreError> {
+    fn remove_from_indexes(&self, _id: &str, _data: &Value) -> Result<(), JsonStoreError> {
         // In a real implementation, we would remove from all indexes
         Ok(())
     }

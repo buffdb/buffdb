@@ -48,6 +48,7 @@ vendored-sqlite = ["sqlite", "rusqlite/bundled"]
 
 [dependencies]
 async-stream = "0.3.5"
+async-trait = "0.1.81"
 clap = { version = "4.5.10", features = ["derive"], optional = true }
 crossbeam = "0.8.4"
 duckdb = { version = "1.0.0", optional = true }
@@ -69,7 +70,9 @@ tracing-subscriber = { version = "0.3.18", optional = true }
 uuid = { version = "1.10.0", features = ["v4"] }
 thiserror = "1.0"
 ordered-float = "4.2"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.141"
+chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]
 tonic-build = "0.12.1"
@@ -77,7 +80,6 @@ tonic-build = "0.12.1"
 [dev-dependencies]
 anyhow = "1.0.86"
 criterion = { version = "0.5.1", features = ["async_tokio"] }
-criterion-cycles-per-byte = "0.6.1"
 rand = "0.8.5"
 serial_test = "3.1.1"
 tokio = "1"
