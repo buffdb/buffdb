@@ -106,7 +106,7 @@ impl SecondaryIndex {
 
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
-                        if !existing_keys.is_empty() && !existing_keys.contains(&key) {
+                        if !existing_keys.is_empty() && !existing_keys.contains(&key.to_string()) {
                             return Err(IndexError::UniqueConstraintViolation {
                                 index: self.config.name.clone(),
                                 value: format!("{:?}", value),
@@ -125,7 +125,7 @@ impl SecondaryIndex {
 
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
-                        if !existing_keys.is_empty() && !existing_keys.contains(&key) {
+                        if !existing_keys.is_empty() && !existing_keys.contains(&key.to_string()) {
                             return Err(IndexError::UniqueConstraintViolation {
                                 index: self.config.name.clone(),
                                 value: format!("{:?}", value),
