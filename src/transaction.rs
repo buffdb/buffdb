@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 /// Represents an active database transaction
 pub trait Transaction: Send + Sync {
-    type Error: std::error::Error + Send + Sync + 'static;
+    type Error: std::error::Error + std::fmt::Display + Send + Sync + 'static;
 
     /// Commit the transaction, making all changes permanent
     fn commit(self) -> Result<(), Self::Error>;
@@ -16,7 +16,7 @@ pub trait Transaction: Send + Sync {
 
 /// Extended trait for database backends that support transactions
 pub trait TransactionalBackend: crate::backend::DatabaseBackend {
-    type Transaction: Transaction<Error = Self::Error>;
+    type Transaction: Transaction<Error = Self::Error> + std::fmt::Debug;
 
     /// Begin a new transaction
     fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error>;
@@ -30,12 +30,16 @@ pub trait TransactionalBackend: crate::backend::DatabaseBackend {
 }
 
 /// Manages transaction lifecycle and state
+#[derive(Debug)]
 pub struct TransactionManager<Backend: TransactionalBackend> {
     transactions: Arc<Mutex<HashMap<String, Backend::Transaction>>>,
     default_timeout: Duration,
 }
 
-impl<Backend: TransactionalBackend> TransactionManager<Backend> {
+impl<Backend: TransactionalBackend> TransactionManager<Backend>
+where
+    Backend::Error: std::fmt::Display,
+{
     /// Create a new transaction manager
     pub fn new(default_timeout: Duration) -> Self {
         Self {

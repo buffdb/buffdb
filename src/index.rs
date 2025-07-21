@@ -79,6 +79,7 @@ impl From<bool> for IndexValue {
 }
 
 /// Secondary index structure
+#[derive(Debug)]
 pub struct SecondaryIndex {
     config: IndexConfig,
     // For hash indexes: value -> set of keys
@@ -209,6 +210,7 @@ impl SecondaryIndex {
 }
 
 /// Index manager that maintains all indexes for a store
+#[derive(Debug)]
 pub struct IndexManager {
     indexes: Arc<RwLock<HashMap<String, SecondaryIndex>>>,
 }

@@ -12,6 +12,7 @@ use crate::{Location, RpcResponse, StreamingRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
+use futures::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tonic::Status;
@@ -61,7 +62,7 @@ pub struct JsonDocument {
 }
 
 /// JSON document store
-pub struct JsonStore<Backend> {
+pub struct JsonStore<Backend: TransactionalBackend> {
     backend: Backend,
     transaction_manager: Option<Arc<TransactionManager<Backend>>>,
     index_manager: Arc<IndexManager>,
@@ -72,7 +73,8 @@ pub struct JsonStore<Backend> {
 
 impl<Backend> JsonStore<Backend>
 where
-    Backend: DatabaseBackend + KvBackend,
+    Backend: DatabaseBackend + KvBackend + TransactionalBackend,
+    Backend::Error: std::fmt::Display,
 {
     /// Create a new JSON document store
     pub fn new(backend: Backend, collection: String) -> Self {
@@ -94,7 +96,7 @@ where
     pub fn create_json_index(
         &self,
         name: String,
-        _json_path: String,
+        json_path: String,
         index_type: IndexType,
         unique: bool,
     ) -> Result<(), crate::index::IndexError> {
@@ -173,7 +175,7 @@ impl JsonPath {
                             }
                         }
                     }
-                } else if part == "*" {
+                } else if part == &"*" {
                     // Wildcard
                     match value {
                         Value::Object(map) => next.extend(map.values()),
@@ -203,63 +205,120 @@ impl JsonPath {
             ));
         }
 
+        // Handle path with only "$"
+        if parts.len() == 1 {
+            *json = new_value;
+            return Ok(());
+        }
+
+        // Navigate to the parent of the target location
         let mut current = json;
+        let target_path = &parts[1..parts.len() - 1];
+        let final_key = parts[parts.len() - 1];
 
-        for (i, part) in parts.iter().skip(1).enumerate() {
-            let is_last = i == parts.len() - 2;
-
+        for part in target_path {
             if part.ends_with(']') {
                 // Array access
                 let (field, index_str) = part.split_once('[').unwrap();
                 let index_str = index_str.trim_end_matches(']');
+                let index: usize = index_str.parse().unwrap();
 
-                // Ensure field exists and is an array
-                if !current.get(field).map(|v| v.is_array()).unwrap_or(false) {
-                    current[field] = Value::Array(Vec::new());
+                // Ensure we have an object to work with
+                if !current.is_object() {
+                    *current = Value::Object(Map::new());
                 }
-
-                if let Some(arr) = current.get_mut(field).and_then(|v| v.as_array_mut()) {
-                    if let Ok(index) = index_str.parse::<usize>() {
-                        // Extend array if needed
-                        while arr.len() <= index {
-                            arr.push(Value::Null);
-                        }
-
-                        if is_last {
-                            arr[index] = new_value;
-                            return Ok(());
-                        } else {
-                            current = &mut arr[index];
-                        }
+                
+                // Ensure field exists and is an array
+                {
+                    let obj = current.as_object_mut().unwrap();
+                    if !obj.contains_key(field) || !obj[field].is_array() {
+                        obj.insert(field.to_string(), Value::Array(Vec::new()));
                     }
                 }
+                
+                // Now work with the array
+                {
+                    let obj = current.as_object_mut().unwrap();
+                    let arr = obj.get_mut(field).unwrap().as_array_mut().unwrap();
+                    
+                    // Extend array if needed
+                    while arr.len() <= index {
+                        arr.push(Value::Null);
+                    }
+                }
+                
+                // Move to the array element
+                current = current.get_mut(field).unwrap().as_array_mut().unwrap().get_mut(index).unwrap();
             } else {
                 // Object field access
                 if !current.is_object() {
                     *current = Value::Object(Map::new());
                 }
 
-                if let Some(obj) = current.as_object_mut() {
-                    if is_last {
-                        obj.insert(part.to_string(), new_value);
-                        return Ok(());
-                    } else {
-                        obj.entry(part.to_string())
-                            .or_insert(Value::Object(Map::new()));
-                        current = obj.get_mut(part).unwrap();
-                    }
+                let obj = current.as_object_mut().unwrap();
+                if !obj.contains_key(&part.to_string()) {
+                    obj.insert(part.to_string(), Value::Object(Map::new()));
+                }
+                current = obj.get_mut(&part.to_string()).unwrap();
+            }
+        }
+
+        // Set the final value
+        if final_key.ends_with(']') {
+            // Array access
+            let (field, index_str) = final_key.split_once('[').unwrap();
+            let index_str = index_str.trim_end_matches(']');
+            let index: usize = index_str.parse().unwrap();
+
+            // Ensure we have an object to work with
+            if !current.is_object() {
+                *current = Value::Object(Map::new());
+            }
+            
+            // Ensure field exists and is an array
+            {
+                let obj = current.as_object_mut().unwrap();
+                if !obj.contains_key(field) || !obj[field].is_array() {
+                    obj.insert(field.to_string(), Value::Array(Vec::new()));
                 }
             }
+            
+            // Set the value in the array
+            let obj = current.as_object_mut().unwrap();
+            let arr = obj.get_mut(field).unwrap().as_array_mut().unwrap();
+            
+            // Extend array if needed
+            while arr.len() <= index {
+                arr.push(Value::Null);
+            }
+            arr[index] = new_value;
+        } else {
+            // Object field access
+            if !current.is_object() {
+                *current = Value::Object(Map::new());
+            }
+
+            let obj = current.as_object_mut().unwrap();
+            obj.insert(final_key.to_string(), new_value);
         }
 
         Ok(())
     }
 }
 
+// Helper to create a streaming request from a single item
+fn single_item_stream<T>(item: T) -> impl futures::Stream<Item = Result<T, tonic::Status>> 
+where
+    T: Send + 'static,
+{
+    futures::stream::once(async move { Ok(item) })
+}
+
 // Document store operations
 impl<Backend> JsonStore<Backend>
 where
-    Backend: KvBackend<Error: IntoTonicStatus> + 'static,
+    Backend: KvBackend<Error: IntoTonicStatus> + TransactionalBackend + 'static,
+    Backend::Error: std::fmt::Display,
 {
     /// Insert a new document
     pub async fn insert(

@@ -1,12 +1,13 @@
 use crate::backend::duckdb::DuckDb;
 use crate::backend::KvBackend;
 use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
-use crate::{RpcResponse, StreamingRequest};
+use crate::RpcResponse;
 use duckdb::Connection;
 use std::sync::{Arc, Mutex};
-use tonic::Status;
+// use tonic::Status; // Unused
 
 /// DuckDB transaction wrapper
+#[derive(Debug)]
 pub struct DuckDbTransaction {
     conn: Arc<Mutex<Connection>>,
     committed: Arc<Mutex<bool>>,
@@ -69,7 +70,7 @@ impl TransactionalBackend for DuckDb {
     type Transaction = DuckDbTransaction;
 
     fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error> {
-        let mut conn = self.connect()?;
+        let conn = self.connect_kv()?;
         conn.execute("BEGIN TRANSACTION", [])?;
         Ok(DuckDbTransaction::new(conn))
     }
@@ -85,30 +86,30 @@ impl TransactionalBackend for DuckDb {
 impl TransactionalKvBackend for DuckDb {
     async fn get_in_transaction(
         &self,
-        transaction_id: &str,
-        request: StreamingRequest<crate::proto::kv::GetRequest>,
+        _transaction_id: &str,
+        request: tonic::Streaming<crate::proto::kv::GetRequest>,
     ) -> RpcResponse<Self::GetStream> {
         // For now, we'll use the regular get implementation
         // In a full implementation, we would look up the transaction by ID
         // and use its connection
-        self.get(request).await
+        self.get(tonic::Request::new(request)).await
     }
 
     async fn set_in_transaction(
         &self,
-        transaction_id: &str,
-        request: StreamingRequest<crate::proto::kv::SetRequest>,
+        _transaction_id: &str,
+        request: tonic::Streaming<crate::proto::kv::SetRequest>,
     ) -> RpcResponse<Self::SetStream> {
         // For now, we'll use the regular set implementation
-        self.set(request).await
+        self.set(tonic::Request::new(request)).await
     }
 
     async fn delete_in_transaction(
         &self,
-        transaction_id: &str,
-        request: StreamingRequest<crate::proto::kv::DeleteRequest>,
+        _transaction_id: &str,
+        request: tonic::Streaming<crate::proto::kv::DeleteRequest>,
     ) -> RpcResponse<Self::DeleteStream> {
         // For now, we'll use the regular delete implementation
-        self.delete(request).await
+        self.delete(tonic::Request::new(request)).await
     }
 }
