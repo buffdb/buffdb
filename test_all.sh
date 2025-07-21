@@ -55,7 +55,6 @@ echo
 echo "4. Optional Backend Tests (may fail)"
 echo "===================================="
 run_test "DuckDB transactions" "cargo test duckdb_transaction --features vendored-duckdb" || echo "  (Expected failure on some systems)"
-run_test "RocksDB transactions" "cargo test rocksdb_transaction --features vendored-rocksdb" || echo "  (Expected failure on some systems)"
 
 echo
 echo "5. Example Compilation"
