@@ -3,9 +3,7 @@
 //! For usage, run `cargo run -- --help`.
 
 #[cfg(not(any(feature = "duckdb", feature = "sqlite", feature = "rocksdb")))]
-compile_error!(
-    "at least one backend must be enabled (options are `duckdb`, `sqlite`, and `rocksdb`)"
-);
+compile_error!("at least one backend must be enabled (options are `duckdb`, `sqlite`, and `rocksdb`)");
 
 mod cli;
 mod tracing_shim;
