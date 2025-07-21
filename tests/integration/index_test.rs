@@ -98,15 +98,12 @@ async fn test_index_manager_operations() {
         // Insert some test data
         email_idx
             .insert(
-                "user:1".to_string(),
+                "user:1",
                 IndexValue::String("alice@example.com".to_string()),
             )
             .unwrap();
         email_idx
-            .insert(
-                "user:2".to_string(),
-                IndexValue::String("bob@example.com".to_string()),
-            )
+            .insert("user:2", IndexValue::String("bob@example.com".to_string()))
             .unwrap();
 
         // Find by exact value
@@ -119,18 +116,10 @@ async fn test_index_manager_operations() {
 
     if let Some(age_idx) = index_manager.get_index("age") {
         // Insert age data
-        age_idx
-            .insert("user:1".to_string(), IndexValue::Integer(25))
-            .unwrap();
-        age_idx
-            .insert("user:2".to_string(), IndexValue::Integer(30))
-            .unwrap();
-        age_idx
-            .insert("user:3".to_string(), IndexValue::Integer(35))
-            .unwrap();
-        age_idx
-            .insert("user:4".to_string(), IndexValue::Integer(40))
-            .unwrap();
+        age_idx.insert("user:1", IndexValue::Integer(25)).unwrap();
+        age_idx.insert("user:2", IndexValue::Integer(30)).unwrap();
+        age_idx.insert("user:3", IndexValue::Integer(35)).unwrap();
+        age_idx.insert("user:4", IndexValue::Integer(40)).unwrap();
 
         // Range query
         let keys = age_idx

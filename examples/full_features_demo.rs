@@ -143,12 +143,12 @@ async fn demonstrate_indexes() -> Result<(), Box<dyn std::error::Error>> {
     for (id, email, age) in users {
         // Update email index
         if let Some(email_idx) = index_manager.get_index("email_idx") {
-            email_idx.insert(id.to_string(), IndexValue::String(email.to_string()))?;
+            email_idx.insert(id, IndexValue::String(email.to_string()))?;
         }
 
         // Update age index
         if let Some(age_idx) = index_manager.get_index("age_idx") {
-            age_idx.insert(id.to_string(), IndexValue::Integer(age))?;
+            age_idx.insert(id, IndexValue::Integer(age))?;
         }
 
         println!("   Indexed {}: email={}, age={}", id, email, age);
