@@ -50,31 +50,31 @@ pub enum IndexValue {
 
 impl From<String> for IndexValue {
     fn from(s: String) -> Self {
-        IndexValue::String(s)
+        Self::String(s)
     }
 }
 
 impl From<&str> for IndexValue {
     fn from(s: &str) -> Self {
-        IndexValue::String(s.to_string())
+        Self::String(s.to_string())
     }
 }
 
 impl From<i64> for IndexValue {
     fn from(i: i64) -> Self {
-        IndexValue::Integer(i)
+        Self::Integer(i)
     }
 }
 
 impl From<f64> for IndexValue {
     fn from(f: f64) -> Self {
-        IndexValue::Float(ordered_float::OrderedFloat(f))
+        Self::Float(ordered_float::OrderedFloat(f))
     }
 }
 
 impl From<bool> for IndexValue {
     fn from(b: bool) -> Self {
-        IndexValue::Boolean(b)
+        Self::Boolean(b)
     }
 }
 
@@ -102,14 +102,14 @@ impl SecondaryIndex {
     pub fn insert(&self, key: &str, value: IndexValue) -> Result<(), IndexError> {
         match self.config.index_type {
             IndexType::Hash => {
-                let mut index = self.hash_index.write().unwrap();
+                let mut index = self.hash_index.write().map_err(|_| IndexError::LockError)?;
 
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
                         if !existing_keys.is_empty() && !existing_keys.contains(&key.to_string()) {
                             return Err(IndexError::UniqueConstraintViolation {
                                 index: self.config.name.clone(),
-                                value: format!("{:?}", value),
+                                value: format!("{value:?}"),
                             });
                         }
                     }
@@ -117,18 +117,18 @@ impl SecondaryIndex {
 
                 index
                     .entry(value)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(key.to_string());
             }
             IndexType::BTree => {
-                let mut index = self.btree_index.write().unwrap();
+                let mut index = self.btree_index.write().map_err(|_| IndexError::LockError)?;
 
                 if self.config.unique {
                     if let Some(existing_keys) = index.get(&value) {
                         if !existing_keys.is_empty() && !existing_keys.contains(&key.to_string()) {
                             return Err(IndexError::UniqueConstraintViolation {
                                 index: self.config.name.clone(),
-                                value: format!("{:?}", value),
+                                value: format!("{value:?}"),
                             });
                         }
                     }
@@ -136,7 +136,7 @@ impl SecondaryIndex {
 
                 index
                     .entry(value)
-                    .or_insert_with(HashSet::new)
+                    .or_default()
                     .insert(key.to_string());
             }
             _ => {
@@ -152,7 +152,7 @@ impl SecondaryIndex {
     pub fn remove(&self, key: &str, value: &IndexValue) -> Result<(), IndexError> {
         match self.config.index_type {
             IndexType::Hash => {
-                let mut index = self.hash_index.write().unwrap();
+                let mut index = self.hash_index.write().map_err(|_| IndexError::LockError)?;
                 if let Some(keys) = index.get_mut(value) {
                     keys.remove(key);
                     if keys.is_empty() {
@@ -161,7 +161,7 @@ impl SecondaryIndex {
                 }
             }
             IndexType::BTree => {
-                let mut index = self.btree_index.write().unwrap();
+                let mut index = self.btree_index.write().map_err(|_| IndexError::LockError)?;
                 if let Some(keys) = index.get_mut(value) {
                     keys.remove(key);
                     if keys.is_empty() {
@@ -179,11 +179,11 @@ impl SecondaryIndex {
     pub fn find_exact(&self, value: &IndexValue) -> Result<HashSet<String>, IndexError> {
         match self.config.index_type {
             IndexType::Hash => {
-                let index = self.hash_index.read().unwrap();
+                let index = self.hash_index.read().map_err(|_| IndexError::LockError)?;
                 Ok(index.get(value).cloned().unwrap_or_default())
             }
             IndexType::BTree => {
-                let index = self.btree_index.read().unwrap();
+                let index = self.btree_index.read().map_err(|_| IndexError::LockError)?;
                 Ok(index.get(value).cloned().unwrap_or_default())
             }
             _ => Err(IndexError::UnsupportedIndexType),
@@ -198,7 +198,7 @@ impl SecondaryIndex {
     ) -> Result<HashSet<String>, IndexError> {
         match self.config.index_type {
             IndexType::BTree => {
-                let index = self.btree_index.read().unwrap();
+                let index = self.btree_index.read().map_err(|_| IndexError::LockError)?;
                 let mut result = HashSet::new();
 
                 for (_, keys) in index.range(start.clone()..=end.clone()) {
@@ -221,17 +221,23 @@ pub struct IndexManager {
     indexes: Arc<RwLock<HashMap<String, SecondaryIndex>>>,
 }
 
-impl IndexManager {
-    /// Create a new index manager
-    pub fn new() -> Self {
+impl Default for IndexManager {
+    fn default() -> Self {
         Self {
             indexes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
+}
+
+impl IndexManager {
+    /// Create a new index manager
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     /// Create a new index
     pub fn create_index(&self, config: IndexConfig) -> Result<(), IndexError> {
-        let mut indexes = self.indexes.write().unwrap();
+        let mut indexes = self.indexes.write().map_err(|_| IndexError::LockError)?;
 
         if indexes.contains_key(&config.name) {
             return Err(IndexError::IndexAlreadyExists {
@@ -245,7 +251,7 @@ impl IndexManager {
 
     /// Drop an index
     pub fn drop_index(&self, name: &str) -> Result<(), IndexError> {
-        let mut indexes = self.indexes.write().unwrap();
+        let mut indexes = self.indexes.write().map_err(|_| IndexError::LockError)?;
 
         if indexes.remove(name).is_none() {
             return Err(IndexError::IndexNotFound {
@@ -257,13 +263,13 @@ impl IndexManager {
     }
 
     /// Get an index by name
-    pub fn get_index(&self, name: &str) -> Option<SecondaryIndex> {
-        let indexes = self.indexes.read().unwrap();
-        indexes.get(name).map(|idx| SecondaryIndex {
+    pub fn get_index(&self, name: &str) -> Result<Option<SecondaryIndex>, IndexError> {
+        let indexes = self.indexes.read().map_err(|_| IndexError::LockError)?;
+        Ok(indexes.get(name).map(|idx| SecondaryIndex {
             config: idx.config.clone(),
             hash_index: Arc::clone(&idx.hash_index),
             btree_index: Arc::clone(&idx.btree_index),
-        })
+        }))
     }
 
     /// Update all indexes when a key-value pair is inserted or updated
@@ -273,7 +279,7 @@ impl IndexManager {
         old_value: Option<&str>,
         new_value: &str,
     ) -> Result<(), IndexError> {
-        let indexes = self.indexes.read().unwrap();
+        let indexes = self.indexes.read().map_err(|_| IndexError::LockError)?;
 
         for (_, index) in indexes.iter() {
             // Remove old value from index if it exists
@@ -292,7 +298,7 @@ impl IndexManager {
 
     /// Remove a key from all indexes
     pub fn remove_from_indexes(&self, key: &str, value: &str) -> Result<(), IndexError> {
-        let indexes = self.indexes.read().unwrap();
+        let indexes = self.indexes.read().map_err(|_| IndexError::LockError)?;
 
         for (_, index) in indexes.iter() {
             let index_value = IndexValue::String(value.to_string());
@@ -323,6 +329,9 @@ pub enum IndexError {
         operation: String,
         index_type: String,
     },
+
+    #[error("Lock error")]
+    LockError,
 }
 
 #[cfg(test)]

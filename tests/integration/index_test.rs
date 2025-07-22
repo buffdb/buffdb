@@ -94,7 +94,7 @@ async fn test_index_manager_operations() {
     index_manager.create_index(age_index).unwrap();
 
     // Test index operations
-    if let Some(email_idx) = index_manager.get_index("email") {
+    if let Some(email_idx) = index_manager.get_index("email").unwrap() {
         // Insert some test data
         email_idx
             .insert(
@@ -114,7 +114,7 @@ async fn test_index_manager_operations() {
         assert!(keys.contains("user:1"));
     }
 
-    if let Some(age_idx) = index_manager.get_index("age") {
+    if let Some(age_idx) = index_manager.get_index("age").unwrap() {
         // Insert age data
         age_idx.insert("user:1", IndexValue::Integer(25)).unwrap();
         age_idx.insert("user:2", IndexValue::Integer(30)).unwrap();
