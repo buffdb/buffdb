@@ -78,6 +78,9 @@ impl From<bool> for IndexValue {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CompositeKey(pub Vec<IndexValue>);
+
 /// Secondary index structure
 #[derive(Debug)]
 pub struct SecondaryIndex {
@@ -86,6 +89,8 @@ pub struct SecondaryIndex {
     hash_index: Arc<RwLock<HashMap<IndexValue, HashSet<String>>>>,
     // For btree indexes: sorted map of value -> set of keys
     btree_index: Arc<RwLock<BTreeMap<IndexValue, HashSet<String>>>>,
+    // For composite indexes:
+    composite_index: Arc<RwLock<HashMap<CompositeKey, HashSet<String>>>>,
 }
 
 impl SecondaryIndex {
@@ -95,6 +100,7 @@ impl SecondaryIndex {
             config,
             hash_index: Arc::new(RwLock::new(HashMap::new())),
             btree_index: Arc::new(RwLock::new(BTreeMap::new())),
+            composite_index: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -152,6 +158,36 @@ impl SecondaryIndex {
         Ok(())
     }
 
+    pub fn insert_composite(&self, key: &str, values: Vec<IndexValue>) -> Result<(), IndexError> {
+        if let IndexType::Composite(_) = &self.config.index_type {
+            let composite_key = CompositeKey(values);
+            let mut index =
+                self.composite_index
+                    .write()
+                    .map_err(|_| IndexError::IndexAlreadyExists {
+                        name: "lock poisoned".to_string(),
+                    })?;
+            if self.config.unique {
+                if let Some(existing_keys) = index.get(&composite_key) {
+                    if !existing_keys.is_empty() && !existing_keys.contains(&key.to_string()) {
+                        return Err(IndexError::UniqueConstraintViolation {
+                            index: self.config.name.clone(),
+                            value: format!("{composite_key:?}"),
+                        });
+                    }
+                }
+            }
+            let _ = index
+                .entry(composite_key)
+                .or_default()
+                .insert(key.to_string());
+            drop(index);
+            Ok(())
+        } else {
+            Err(IndexError::UnsupportedIndexType)
+        }
+    }
+
     /// Remove an entry from the index
     pub fn remove(&self, key: &str, value: &IndexValue) -> Result<(), IndexError> {
         match self.config.index_type {
@@ -189,6 +225,28 @@ impl SecondaryIndex {
         Ok(())
     }
 
+    pub fn remove_composite(&self, key: &str, values: Vec<IndexValue>) -> Result<(), IndexError> {
+        if let IndexType::Composite(_) = &self.config.index_type {
+            let composite_key = CompositeKey(values);
+            let mut index =
+                self.composite_index
+                    .write()
+                    .map_err(|_| IndexError::IndexAlreadyExists {
+                        name: "lock poisoned".to_string(),
+                    })?;
+            if let Some(keys) = index.get_mut(&composite_key) {
+                let _ = keys.remove(key);
+                if keys.is_empty() {
+                    drop(index.remove(&composite_key));
+                    drop(index);
+                }
+            }
+            Ok(())
+        } else {
+            Err(IndexError::UnsupportedIndexType)
+        }
+    }
+
     /// Find all keys with the given value
     pub fn find_exact(&self, value: &IndexValue) -> Result<HashSet<String>, IndexError> {
         match self.config.index_type {
@@ -211,6 +269,24 @@ impl SecondaryIndex {
                 Ok(index.get(value).cloned().unwrap_or_default())
             }
             _ => Err(IndexError::UnsupportedIndexType),
+        }
+    }
+
+    pub fn find_exact_composite(
+        &self,
+        values: Vec<IndexValue>,
+    ) -> Result<HashSet<String>, IndexError> {
+        if let IndexType::Composite(_) = &self.config.index_type {
+            let composite_key = CompositeKey(values);
+            let index =
+                self.composite_index
+                    .read()
+                    .map_err(|_| IndexError::IndexAlreadyExists {
+                        name: "lock poisoned".to_string(),
+                    })?;
+            Ok(index.get(&composite_key).cloned().unwrap_or_default())
+        } else {
+            Err(IndexError::UnsupportedIndexType)
         }
     }
 
@@ -307,6 +383,7 @@ impl IndexManager {
             config: idx.config.clone(),
             hash_index: Arc::clone(&idx.hash_index),
             btree_index: Arc::clone(&idx.btree_index),
+            composite_index: Arc::clone(&idx.composite_index),
         })
     }
 
@@ -476,5 +553,146 @@ mod tests {
         index
             .insert("key1", IndexValue::String("unique_value".to_string()))
             .unwrap();
+    }
+
+    #[test]
+    fn test_insert_composite() {
+        let config = IndexConfig {
+            name: "unique_index".to_string(),
+            index_type: IndexType::Composite(vec!["user_id".to_string(), "score".to_string()]),
+            unique: false,
+            filter: None,
+        };
+
+        let index = SecondaryIndex::new(config);
+        index
+            .insert_composite(
+                "doc1",
+                vec![
+                    IndexValue::String("alice".to_string()),
+                    IndexValue::Integer(95),
+                ],
+            )
+            .unwrap();
+
+        index
+            .insert_composite(
+                "doc2",
+                vec![
+                    IndexValue::String("alice".to_string()),
+                    IndexValue::Integer(100),
+                ],
+            )
+            .unwrap();
+        index
+            .insert_composite(
+                "doc3",
+                vec![
+                    IndexValue::String("alice".to_string()),
+                    IndexValue::Integer(95),
+                ],
+            )
+            .unwrap();
+
+        println!("{:?}", index);
+
+        // Perform an exact query
+        let exact_query_keys = index
+            .find_exact_composite(vec![
+                IndexValue::String("alice".to_string()),
+                IndexValue::Integer(95),
+            ])
+            .unwrap();
+        assert!(exact_query_keys.contains("doc1"));
+        assert!(exact_query_keys.contains("doc3"));
+    }
+
+    #[test]
+    fn test_remove_composite() {
+        let config = IndexConfig {
+            name: "composite_remove_index".to_string(),
+            index_type: IndexType::Composite(vec!["user_id".to_string(), "status".to_string()]),
+            unique: false,
+            filter: None,
+        };
+
+        let index = SecondaryIndex::new(config);
+        // Insert some documents
+        let key1_values = vec![
+            IndexValue::String("alice".to_string()),
+            IndexValue::String("active".to_string()),
+        ];
+        let key2_values = vec![
+            IndexValue::String("bob".to_string()),
+            IndexValue::String("active".to_string()),
+        ];
+        let key3_values = vec![
+            IndexValue::String("alice".to_string()),
+            IndexValue::String("inactive".to_string()),
+        ];
+
+        index.insert_composite("doc1", key1_values.clone()).unwrap();
+        index.insert_composite("doc2", key2_values.clone()).unwrap();
+        index.insert_composite("doc3", key1_values.clone()).unwrap();
+        index.insert_composite("doc4", key3_values.clone()).unwrap();
+
+        // Verify initial state
+        let keys_active_alice = index.find_exact_composite(key1_values.clone()).unwrap();
+        assert_eq!(keys_active_alice.len(), 2);
+        assert!(keys_active_alice.contains("doc1"));
+        assert!(keys_active_alice.contains("doc3"));
+
+        // Remove one document with the composite key
+        index.remove_composite("doc1", key1_values.clone()).unwrap();
+
+        // Verify the remaining documents
+        let remaining_keys = index.find_exact_composite(key1_values.clone()).unwrap();
+        assert_eq!(remaining_keys.len(), 1);
+        assert!(remaining_keys.contains("doc3"));
+
+        // Remove the last document with that key
+        index.remove_composite("doc3", key1_values.clone()).unwrap();
+
+        // Verify the composite key is no longer in the index
+        let no_keys = index.find_exact_composite(key1_values.clone()).unwrap();
+        assert!(no_keys.is_empty());
+    }
+
+    #[test]
+    fn test_unique_composite_constraint() {
+        let config = IndexConfig {
+            name: "unique_composite_index".to_string(),
+            index_type: IndexType::Composite(vec!["user_id".to_string(), "email".to_string()]),
+            unique: true,
+            filter: None,
+        };
+
+        let index = SecondaryIndex::new(config);
+
+        // Insert the first document
+        let key_values = vec![
+            IndexValue::String("user1".to_string()),
+            IndexValue::String("test@example.com".to_string()),
+        ];
+        index.insert_composite("doc1", key_values.clone()).unwrap();
+
+        // Try to insert a different document with the same composite key, should fail
+        let result = index.insert_composite("doc2", key_values.clone());
+        assert!(result.is_err());
+        if let Err(IndexError::UniqueConstraintViolation { index, value }) = result {
+            assert_eq!(index, "unique_composite_index");
+            assert!(value.contains("user1"));
+            assert!(value.contains("test@example.com"));
+        } else {
+            panic!("Expected UniqueConstraintViolation error");
+        }
+
+        // Try to insert the same document again, should succeed
+        index.insert_composite("doc1", key_values.clone()).unwrap();
+
+        // Check if the key exists
+        let keys = index.find_exact_composite(key_values).unwrap();
+        assert_eq!(keys.len(), 1);
+        assert!(keys.contains("doc1"));
     }
 }
