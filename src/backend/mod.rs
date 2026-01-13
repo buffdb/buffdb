@@ -27,6 +27,8 @@ mod sealed {
     impl<T> Sealed for Arc<T> {}
 }
 
+mod error;
+
 // #[cfg(feature = "duckdb")]
 // pub use self::duckdb::DuckDb;
 #[cfg(feature = "sqlite")]
