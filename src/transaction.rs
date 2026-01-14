@@ -1,28 +1,47 @@
+use crate::backend::error::BackendError;
+use crate::interop::IntoTonicStatus;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use thiserror::Error;
 use uuid::Uuid;
+
+#[derive(Error, Debug)]
+#[error(transparent)]
+pub struct TransactionError(#[from] BackendError);
+
+impl IntoTonicStatus for TransactionError {
+    fn into_tonic_status(self) -> tonic::Status {
+        self.0.into_tonic_status()
+    }
+}
+
+impl From<rusqlite::Error> for TransactionError {
+    fn from(value: rusqlite::Error) -> Self {
+        TransactionError(value.into())
+    }
+}
 
 /// Represents an active database transaction
 pub trait Transaction: Send + Sync {
-    type Error: std::error::Error + std::fmt::Display + Send + Sync + 'static;
+    // type Error: std::error::Error + std::fmt::Display + Send + Sync + 'static;
 
     /// Commit the transaction, making all changes permanent
-    fn commit(self) -> Result<(), Self::Error>;
+    fn commit(self) -> Result<(), TransactionError>;
 
     /// Rollback the transaction, discarding all changes
-    fn rollback(self) -> Result<(), Self::Error>;
+    fn rollback(self) -> Result<(), TransactionError>;
 }
 
 /// Extended trait for database backends that support transactions
 pub trait TransactionalBackend: crate::backend::DatabaseBackend {
-    type Transaction: Transaction<Error = Self::Error> + std::fmt::Debug;
+    type Transaction: Transaction + std::fmt::Debug;
 
     /// Begin a new transaction
-    fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error>;
+    fn begin_transaction(&self) -> Result<Self::Transaction, TransactionError>;
 
     /// Begin a new read-only transaction
-    fn begin_read_transaction(&self) -> Result<Self::Transaction, Self::Error> {
+    fn begin_read_transaction(&self) -> Result<Self::Transaction, TransactionError> {
         // Default implementation just creates a regular transaction
         // Backends can override for optimization
         self.begin_transaction()
@@ -37,10 +56,7 @@ pub struct TransactionManager<Backend: TransactionalBackend> {
     default_timeout: Duration,
 }
 
-impl<Backend: TransactionalBackend> TransactionManager<Backend>
-where
-    Backend::Error: std::fmt::Display,
-{
+impl<Backend: TransactionalBackend> TransactionManager<Backend> {
     /// Create a new transaction manager
     pub fn new(default_timeout: Duration) -> Self {
         Self {
@@ -55,7 +71,7 @@ where
         backend: &Backend,
         read_only: bool,
         timeout_ms: Option<i32>,
-    ) -> Result<String, Backend::Error> {
+    ) -> Result<String, TransactionError> {
         let transaction = if read_only {
             backend.begin_read_transaction()?
         } else {

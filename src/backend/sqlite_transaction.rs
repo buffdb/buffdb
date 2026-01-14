@@ -1,6 +1,8 @@
 use crate::backend::sqlite::Sqlite;
 use crate::backend::KvBackend;
-use crate::transaction::{Transaction, TransactionalBackend, TransactionalKvBackend};
+use crate::transaction::{
+    Transaction, TransactionError, TransactionalBackend, TransactionalKvBackend,
+};
 use crate::RpcResponse;
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
@@ -26,9 +28,9 @@ impl SqliteTransaction {
 }
 
 impl Transaction for SqliteTransaction {
-    type Error = rusqlite::Error;
+    // type Error = rusqlite::Error;
 
-    fn commit(self) -> Result<(), Self::Error> {
+    fn commit(self) -> Result<(), TransactionError> {
         let mut committed = self.committed.lock().map_err(|_| {
             rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
@@ -52,7 +54,7 @@ impl Transaction for SqliteTransaction {
         Ok(())
     }
 
-    fn rollback(self) -> Result<(), Self::Error> {
+    fn rollback(self) -> Result<(), TransactionError> {
         let mut committed = self.committed.lock().map_err(|_| {
             rusqlite::Error::SqliteFailure(
                 rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_MISUSE),
@@ -93,13 +95,13 @@ impl Drop for SqliteTransaction {
 impl TransactionalBackend for Sqlite {
     type Transaction = SqliteTransaction;
 
-    fn begin_transaction(&self) -> Result<Self::Transaction, Self::Error> {
+    fn begin_transaction(&self) -> Result<Self::Transaction, TransactionError> {
         let conn = self.connect_kv()?;
         let _ = conn.execute("BEGIN IMMEDIATE", [])?;
         Ok(SqliteTransaction::new(conn))
     }
 
-    fn begin_read_transaction(&self) -> Result<Self::Transaction, Self::Error> {
+    fn begin_read_transaction(&self) -> Result<Self::Transaction, TransactionError> {
         let conn = self.connect_kv()?;
         let _ = conn.execute("BEGIN", [])?;
         Ok(SqliteTransaction::new(conn))

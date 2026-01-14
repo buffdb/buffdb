@@ -27,7 +27,9 @@ mod sealed {
     impl<T> Sealed for Arc<T> {}
 }
 
-mod error;
+pub mod error;
+
+use error::BackendError;
 
 // #[cfg(feature = "duckdb")]
 // pub use self::duckdb::DuckDb;
@@ -43,12 +45,12 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
     /// The type of connection to the database.
     type Connection;
     /// The type of any errors returned by the backend.
-    type Error; // TODO permit custom error messages?
+    // type Error; // TODO permit custom error messages?
 
     // TODO Consider a different error type such that in-memory connections can be rejected as
     // necessary.
     /// Create a new instance of the backend at the given location.
-    fn at_location(location: Location) -> Result<Self, Self::Error>;
+    fn at_location(location: Location) -> Result<Self, BackendError>;
 
     /// The location of the database.
     fn location(&self) -> &Location;
@@ -56,7 +58,7 @@ pub trait DatabaseBackend: sealed::Sealed + Sized {
     /// Note: Backends for specific stores provide their own versions of `connect` that initialize
     /// the store as necessary. It is recommended to **not** call this method directly unless you
     /// are implementing a new backend.
-    fn connect(&self) -> Result<Self::Connection, Self::Error>;
+    fn connect(&self) -> Result<Self::Connection, BackendError>;
 }
 
 /// A backend that supports key-value operations.
@@ -73,12 +75,12 @@ pub trait KvBackend: DatabaseBackend + Send + Sync {
     fn initialize(
         &self,
         #[allow(unused_variables)] connection: &Self::Connection,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), BackendError> {
         Ok(())
     }
 
     /// Connect to the key-value store, initializing it if necessary.
-    fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_kv(&self) -> Result<Self::Connection, BackendError> {
         let conn = self.connect()?;
         self.initialize(&conn)?;
         Ok(conn)
@@ -119,12 +121,12 @@ pub trait BlobBackend: DatabaseBackend + Send + Sync {
     fn initialize(
         &self,
         #[allow(unused_variables)] connection: &Self::Connection,
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), BackendError> {
         Ok(())
     }
 
     /// Connect to the BLOB store, initializing it if necessary.
-    fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_blob(&self) -> Result<Self::Connection, BackendError> {
         let conn = self.connect()?;
         self.initialize(&conn)?;
         Ok(conn)

@@ -1,7 +1,7 @@
 //! A store for binary large objects (BLOBs) with an optional metadata field.
 
+use crate::backend::error::BackendError;
 use crate::backend::{BlobBackend, DatabaseBackend};
-use crate::interop::IntoTonicStatus;
 use crate::proto::blob::{
     DeleteRequest, EqDataRequest, GetRequest, NotEqDataRequest, StoreRequest, UpdateRequest,
 };
@@ -27,7 +27,7 @@ where
     /// Create a new key-value store at the given location. If not pre-existing, the store will not
     /// be initialized until the first connection is made.
     #[inline]
-    pub fn at_location(location: Location) -> Result<Self, Backend::Error> {
+    pub fn at_location(location: Location) -> Result<Self, BackendError> {
         Ok(Self {
             backend: Backend::at_location(location)?,
         })
@@ -36,7 +36,7 @@ where
     /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
     /// initialized until the first connection is made.
     #[inline]
-    pub fn at_path<P>(path: P) -> Result<Self, Backend::Error>
+    pub fn at_path<P>(path: P) -> Result<Self, BackendError>
     where
         P: Into<PathBuf>,
     {
@@ -48,7 +48,7 @@ where
     /// Note that all in-memory connections share the same stream, so any asynchronous calls have a
     /// nondeterministic order. This is not a problem for on-disk connections.
     #[inline]
-    pub fn in_memory() -> Result<Self, Backend::Error> {
+    pub fn in_memory() -> Result<Self, BackendError> {
         Self::at_location(Location::InMemory)
     }
 }
@@ -56,13 +56,8 @@ where
 #[tonic::async_trait]
 impl<Backend> BlobRpc for BlobStore<Backend>
 where
-    Backend: BlobBackend<
-            Error: IntoTonicStatus,
-            GetStream: Send,
-            StoreStream: Send,
-            UpdateStream: Send,
-            DeleteStream: Send,
-        > + 'static,
+    Backend: BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
+        + 'static,
 {
     type GetStream = Backend::GetStream;
     type StoreStream = Backend::StoreStream;
