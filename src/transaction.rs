@@ -18,7 +18,7 @@ impl IntoTonicStatus for TransactionError {
 
 impl From<rusqlite::Error> for TransactionError {
     fn from(value: rusqlite::Error) -> Self {
-        TransactionError(value.into())
+        Self(value.into())
     }
 }
 

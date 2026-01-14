@@ -35,7 +35,7 @@ impl IntoTonicStatus for BackendError {
                     rusqlite::ErrorCode::ConstraintViolation => tonic::Status::already_exists(
                         msg.unwrap_or_else(|| "Constraint violation".into()),
                     ),
-                    _ => tonic::Status::internal(format!("Database error: {} {:?}", e, msg)),
+                    _ => tonic::Status::internal(format!("Database error: {e} {msg:?}")),
                 },
                 _ => {
                     tonic::Status::internal(format!("Unhandled database error: {}", db_err.source))

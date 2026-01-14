@@ -44,9 +44,8 @@ use tonic::async_trait;
 pub trait DatabaseBackend: sealed::Sealed + Sized {
     /// The type of connection to the database.
     type Connection;
-    /// The type of any errors returned by the backend.
+    // /// The type of any errors returned by the backend.
     // type Error; // TODO permit custom error messages?
-
     // TODO Consider a different error type such that in-memory connections can be rejected as
     // necessary.
     /// Create a new instance of the backend at the given location.
