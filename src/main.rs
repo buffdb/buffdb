@@ -10,6 +10,7 @@ mod tracing_shim;
 
 use crate::cli::{Args, Backend, BlobArgs, BlobUpdateMode, Command, KvArgs, RunArgs};
 use crate::tracing_shim::debug;
+use buffdb::backend::error::BackendError;
 #[cfg(feature = "duckdb")]
 use buffdb::backend::DuckDb;
 #[cfg(feature = "sqlite")]
@@ -30,6 +31,7 @@ use tokio::io::{self, AsyncReadExt as _, AsyncWriteExt as _};
 use tonic::transport::Server;
 
 /// A custom error message.
+
 #[derive(Debug)]
 struct ErrStr(&'static str);
 
@@ -90,17 +92,16 @@ async fn run<Backend>(
     }: RunArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: DatabaseBackend<Error: IntoTonicStatus + std::error::Error>
+    Backend: DatabaseBackend
         + KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
         + buffdb::transaction::TransactionalBackend
         + 'static,
-    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     if kv_store == blob_store {
-        return Err(Box::new(ErrStr(
-            "kv_store and blob_store cannot be at the same location",
-        )));
+        return Err(Box::new(BackendError::InvalidLocation {
+            message: "kv_store and blob_store cannot be at the same location".into(),
+        }));
     } else {
         // Rust's standard library has extension traits for Unix and Windows. Windows doesn't have
         // the concept of hard links, so there's no need to check an equivalent of inodes.
@@ -114,9 +115,9 @@ where
                 kv_store_metadata.ok().zip(blob_store_metadata.ok())
             {
                 if kv_store_metadata.ino() == blob_store_metadata.ino() {
-                    return Err(Box::new(ErrStr(
-                        "kv_store and blob_store cannot be at the same location",
-                    )));
+                    return Err(Box::new(BackendError::InvalidLocation {
+                        message: "kv_store and blob_store cannot be at the same location".into(),
+                    }));
                 }
             }
         }
@@ -152,10 +153,9 @@ async fn kv<Backend>(
     KvArgs { store, command }: KvArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send, Error: IntoTonicStatus>
+    Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + buffdb::transaction::TransactionalBackend
         + 'static,
-    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let mut client = transitive::kv_client::<_, Backend>(store).await?;
     match command {
@@ -170,7 +170,10 @@ where
 
             let mut stdout = io::stdout();
             let Some(kv::GetResponse { value }) = values.message().await? else {
-                return Err(Box::new(ErrStr("expected at least one value")));
+                // return Err(Box::new(ErrStr("expected at least one value")));
+                return Err(Box::new(BackendError::Generic {
+                    message: "expected at least one value".into(),
+                }));
             };
             stdout.write_all(value.as_bytes()).await?;
             while let Some(kv::GetResponse { value }) = values.message().await? {
@@ -237,15 +240,9 @@ async fn blob<Backend>(
     BlobArgs { store, command }: BlobArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
-    Backend: BlobBackend<
-            GetStream: Send,
-            StoreStream: Send,
-            UpdateStream: Send,
-            DeleteStream: Send,
-            Error: IntoTonicStatus,
-        > + buffdb::transaction::TransactionalBackend
+    Backend: BlobBackend<GetStream: Send, StoreStream: Send, UpdateStream: Send, DeleteStream: Send>
+        + buffdb::transaction::TransactionalBackend
         + 'static,
-    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
     match command {

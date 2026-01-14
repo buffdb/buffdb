@@ -1,3 +1,4 @@
+use crate::backend::error::BackendError;
 use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::proto::{blob, kv};
 use crate::{Location, StreamingRequest};
@@ -9,9 +10,9 @@ where
     Backend: DatabaseBackend,
 {
     type Connection = Backend::Connection;
-    type Error = Backend::Error;
+    // type Error = Backend::Error;
 
-    fn at_location(location: Location) -> Result<Self, Self::Error> {
+    fn at_location(location: Location) -> Result<Self, BackendError> {
         Backend::at_location(location).map(Self::new)
     }
 
@@ -19,7 +20,7 @@ where
         self.as_ref().location()
     }
 
-    fn connect(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect(&self) -> Result<Self::Connection, BackendError> {
         self.as_ref().connect()
     }
 }
@@ -33,7 +34,7 @@ where
     type SetStream = Backend::SetStream;
     type DeleteStream = Backend::DeleteStream;
 
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), BackendError> {
         self.as_ref().initialize(connection)
     }
 
@@ -80,7 +81,7 @@ where
     type UpdateStream = Backend::UpdateStream;
     type DeleteStream = Backend::DeleteStream;
 
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), BackendError> {
         self.as_ref().initialize(connection)
     }
 

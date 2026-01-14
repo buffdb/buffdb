@@ -1,8 +1,8 @@
 //! A key-value store.
 
+use crate::backend::error::BackendError;
 use crate::backend::{DatabaseBackend, KvBackend};
 use crate::index::{IndexConfig, IndexManager};
-use crate::interop::IntoTonicStatus;
 use crate::proto::kv::{
     BeginTransactionRequest, BeginTransactionResponse, CommitTransactionRequest,
     CommitTransactionResponse, DeleteRequest, EqRequest, GetRequest, NotEqRequest,
@@ -34,12 +34,11 @@ pub struct KvStore<Backend: TransactionalBackend> {
 impl<Backend> KvStore<Backend>
 where
     Backend: DatabaseBackend + TransactionalBackend,
-    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     /// Create a new key-value store at the given location. If not pre-existing, the store will not
     /// be initialized until the first connection is made.
     #[inline]
-    pub fn at_location(location: Location) -> Result<Self, Backend::Error> {
+    pub fn at_location(location: Location) -> Result<Self, BackendError> {
         Ok(Self {
             backend: Backend::at_location(location)?,
             transaction_manager: None,
@@ -50,7 +49,7 @@ where
     /// Create a new key-value at the given path on disk. If not pre-existing, the store will not be
     /// initialized until the first connection is made.
     #[inline]
-    pub fn at_path<P>(path: P) -> Result<Self, Backend::Error>
+    pub fn at_path<P>(path: P) -> Result<Self, BackendError>
     where
         P: Into<PathBuf>,
     {
@@ -62,7 +61,7 @@ where
     /// Note that all in-memory connections share the same stream, so any asynchronous calls have a
     /// nondeterministic order. This is not a problem for on-disk connections.
     #[inline]
-    pub fn in_memory() -> Result<Self, Backend::Error> {
+    pub fn in_memory() -> Result<Self, BackendError> {
         Self::at_location(Location::InMemory)
     }
 
@@ -85,7 +84,6 @@ where
 impl<Backend> KvStore<Backend>
 where
     Backend: TransactionalBackend,
-    Backend::Error: std::fmt::Display,
 {
     /// Create a new key-value store with transaction support.
     ///
@@ -98,7 +96,7 @@ where
     pub fn with_transactions(
         location: Location,
         transaction_timeout: Duration,
-    ) -> Result<Self, Backend::Error> {
+    ) -> Result<Self, BackendError> {
         Ok(Self {
             backend: Backend::at_location(location)?,
             transaction_manager: Some(Arc::new(TransactionManager::new(transaction_timeout))),
@@ -110,10 +108,9 @@ where
 #[tonic::async_trait]
 impl<Backend> KvRpc for KvStore<Backend>
 where
-    Backend: KvBackend<Error: IntoTonicStatus, GetStream: Send, SetStream: Send, DeleteStream: Send>
+    Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send>
         + TransactionalBackend
         + 'static,
-    Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     type GetStream = Backend::GetStream;
     type SetStream = Backend::SetStream;

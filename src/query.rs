@@ -1,5 +1,6 @@
+use crate::backend::error::BackendError;
 use crate::backend::DatabaseBackend;
-use crate::interop::{into_tonic_status, IntoTonicStatus};
+use crate::interop::into_tonic_status;
 use crate::proto::query::{QueryResult, RawQuery, RowsChanged, TargetStore};
 use crate::queryable::Queryable;
 use crate::service::query::QueryRpc;
@@ -27,7 +28,7 @@ where
     pub fn at_location(
         kv_location: Location,
         blob_location: Location,
-    ) -> Result<Self, Backend::Error> {
+    ) -> Result<Self, BackendError> {
         // TODO validate that both locations are not in memory
         Ok(Self {
             kv_backend: Backend::at_location(kv_location)?,
@@ -37,7 +38,7 @@ where
 
     /// Create a new query handler at the given paths on disk. No initialization is performed.
     #[inline]
-    pub fn at_path<P1, P2>(kv_path: P1, blob_path: P2) -> Result<Self, Backend::Error>
+    pub fn at_path<P1, P2>(kv_path: P1, blob_path: P2) -> Result<Self, BackendError>
     where
         P1: Into<std::path::PathBuf>,
         P2: Into<std::path::PathBuf>,
@@ -52,7 +53,7 @@ where
 #[tonic::async_trait]
 impl<Backend> QueryRpc for QueryHandler<Backend>
 where
-    Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
+    Backend: DatabaseBackend<Connection: Send>
         + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
         + Send
         + Sync

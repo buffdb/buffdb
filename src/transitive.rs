@@ -4,7 +4,7 @@ use crate::backend::{BlobBackend, DatabaseBackend, KvBackend};
 use crate::client::blob::BlobClient;
 use crate::client::kv::KvClient;
 use crate::client::query::QueryClient;
-use crate::interop::{into_tonic_status, IntoTonicStatus};
+use crate::interop::into_tonic_status;
 use crate::query::QueryHandler;
 use crate::queryable::Queryable;
 use crate::server::blob::BlobServer;
@@ -17,20 +17,23 @@ use crate::Location;
 use hyper_util::rt::TokioIo;
 use std::fmt;
 use std::ops::{Deref, DerefMut};
+use thiserror::Error;
 use tonic::transport::{Channel, Endpoint, Server};
 use tonic::Status;
 
 const DUPLEX_SIZE: usize = 1024;
 
 /// An error from a transitive client.
-#[derive(Debug)]
+#[derive(Error, Debug)]
+#[error("Transitive error")]
 pub enum TransitiveError {
     /// An error from the server.
-    Status(Status),
+    Status(#[from] Status),
     /// An error from the transport layer.
-    Transport(tonic::transport::Error),
+    Transport(#[from] tonic::transport::Error),
 }
 
+/*
 impl fmt::Display for TransitiveError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -60,6 +63,7 @@ impl From<tonic::transport::Error> for TransitiveError {
         Self::Transport(error)
     }
 }
+*/
 
 // TODO Add a way to shut down the server, both manually and automatically on drop.
 /// A temporary client for a data store.
@@ -102,11 +106,10 @@ macro_rules! declare_clients {
         ) -> Result<Transitive<$client<Channel>>, TransitiveError>
         where
             L: Into<Location> + Send + fmt::Debug,
-            Backend: DatabaseBackend<Error: IntoTonicStatus>
+            Backend: DatabaseBackend
                 + $backend<$($bounds)*>
                 + transaction::TransactionalBackend
                 + 'static,
-            Backend::Error: std::fmt::Display + std::fmt::Debug
         {
             let location = location.into();
             let (client, server) = tokio::io::duplex(DUPLEX_SIZE);
@@ -179,7 +182,7 @@ pub async fn query_client<L1, L2, Backend>(
 where
     L1: Into<Location> + Send + fmt::Debug,
     L2: Into<Location> + Send + fmt::Debug,
-    Backend: DatabaseBackend<Error: IntoTonicStatus, Connection: Send>
+    Backend: DatabaseBackend<Connection: Send>
         + Queryable<Connection = <Backend as DatabaseBackend>::Connection, QueryStream: Send>
         + Send
         + Sync

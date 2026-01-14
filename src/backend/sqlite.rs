@@ -1,3 +1,4 @@
+use crate::backend::error::BackendError;
 use crate::backend::{helpers, BlobBackend, DatabaseBackend, KvBackend};
 use crate::conv::try_into_protobuf_any;
 use crate::interop::into_tonic_status;
@@ -19,9 +20,9 @@ pub struct Sqlite {
 
 impl DatabaseBackend for Sqlite {
     type Connection = Connection;
-    type Error = rusqlite::Error;
+    // type Error = rusqlite::Error;
 
-    fn at_location(location: Location) -> Result<Self, Self::Error> {
+    fn at_location(location: Location) -> Result<Self, BackendError> {
         Ok(Self {
             location,
             initialized: AtomicBool::new(false),
@@ -32,10 +33,10 @@ impl DatabaseBackend for Sqlite {
         &self.location
     }
 
-    fn connect(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect(&self) -> Result<Self::Connection, BackendError> {
         match &self.location() {
-            Location::InMemory => Connection::open_in_memory(),
-            Location::OnDisk { path } => Connection::open(path),
+            Location::InMemory => Ok(Connection::open_in_memory()?),
+            Location::OnDisk { path } => Ok(Connection::open(path)?),
         }
     }
 }
@@ -122,7 +123,7 @@ impl KvBackend for Sqlite {
     type DeleteStream = DynStream<Result<kv::DeleteResponse, Status>>;
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), BackendError> {
         let _res = connection.execute(
             "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)",
             [],
@@ -132,7 +133,7 @@ impl KvBackend for Sqlite {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn connect_kv(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_kv(&self) -> Result<Self::Connection, BackendError> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
             KvBackend::initialize(self, &conn)?;
@@ -252,7 +253,7 @@ impl BlobBackend for Sqlite {
     type DeleteStream = DynStream<Result<blob::DeleteResponse, Status>>;
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn initialize(&self, connection: &Self::Connection) -> Result<(), Self::Error> {
+    fn initialize(&self, connection: &Self::Connection) -> Result<(), BackendError> {
         connection.execute_batch(
             "CREATE TABLE IF NOT EXISTS blob(
                 data BLOB,
@@ -264,7 +265,7 @@ impl BlobBackend for Sqlite {
     }
 
     #[cfg_attr(feature = "tracing", tracing::instrument)]
-    fn connect_blob(&self) -> Result<Self::Connection, Self::Error> {
+    fn connect_blob(&self) -> Result<Self::Connection, BackendError> {
         let conn = self.connect()?;
         if !self.initialized.load(Ordering::Relaxed) {
             BlobBackend::initialize(self, &conn)?;
