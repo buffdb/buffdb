@@ -1,0 +1,46 @@
+# BuffDB Configuration File
+# 
+# This file contains configuration settings for BuffDB.
+# Settings specified via command-line arguments will override these values.
+#
+# Configuration precedence:
+# 1. Command-line arguments (highest)
+# 2. This configuration file
+# 3. Default values (lowest)
+
+[server]
+# The address to bind the gRPC server to
+# Default: "[::1]:9313" (IPv6 localhost on port 9313)
+address = "[::1]:9313"
+
+[database]
+# The database backend to use
+# Options: "sqlite" (default), "duckdb" (if enabled)
+backend = "sqlite"
+
+# Location of the key-value store database file
+# Default: "kv_store.db"
+kv_store = "kv_store.db"
+
+# Location of the BLOB store database file
+# Default: "blob_store.db"
+blob_store = "blob_store.db"
+
+[logging]
+# Logging level for the application
+# Options: "trace", "debug", "info", "warn", "error"
+# Default: "info"
+level = "info"
+
+[performance]
+# Performance tuning settings (optional)
+# Uncomment and adjust these values as needed for your deployment
+
+# Maximum number of concurrent connections
+# max_connections = 1000
+
+# Request timeout in seconds
+# request_timeout = 30
+
+# Connection keep-alive interval in seconds
+# keep_alive = 60

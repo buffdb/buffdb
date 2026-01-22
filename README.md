@@ -1545,10 +1545,62 @@ See the [huggingface_integration example](examples/huggingface_integration.rs) f
 
 ## 🔧 Configuration
 
-### CLI Options
-```bash
-buffdb run --addr [::1]:9313 --kv-store kv.db --blob-store blob.db
+BuffDB supports configuration via TOML files, command-line arguments, or a combination of both.
+
+### Configuration File
+
+BuffDB automatically looks for configuration files in these locations (in order):
+1. `--config <path>` - Explicit config file path
+2. `./buffdb.toml` - Current directory
+3. `~/.config/buffdb/buffdb.toml` - User config directory
+
+**Example `buffdb.toml`:**
+```toml
+[server]
+address = "[::1]:9313"
+
+[database]
+backend = "sqlite"
+kv_store = "kv_store.db"
+blob_store = "blob_store.db"
+
+[logging]
+level = "info"
+
+[performance]
+max_connections = 1000
+request_timeout = 30
 ```
+
+### Configuration Precedence
+
+Settings are applied in this order (highest to lowest):
+1. **Command-line arguments** (override everything)
+2. **Configuration file** 
+3. **Default values**
+
+### CLI Options
+
+```bash
+# Using config file
+buffdb run --config custom.toml
+
+# With CLI overrides (takes precedence over config file)
+buffdb run --backend sqlite --addr 127.0.0.1:8080 --kv-store custom_kv.db --blob-store custom_blob.db
+```
+
+### Configuration Options
+
+| Section | Setting | Description | Default |
+|---------|----------|-------------|---------|
+| `server` | `address` | gRPC server bind address | `[::1]:9313` |
+| `database` | `backend` | Database backend | `sqlite` |
+| `database` | `kv_store` | Key-value store path | `kv_store.db` |
+| `database` | `blob_store` | BLOB store path | `blob_store.db` |
+| `logging` | `level` | Log level | `info` |
+| `performance` | `max_connections` | Max concurrent connections | `None` |
+| `performance` | `request_timeout` | Request timeout (seconds) | `None` |
+| `performance` | `keep_alive` | Keep-alive interval (seconds) | `None` |
 
 ### Backends
 | Backend | Feature Flag | Performance | Use Case | Status |
