@@ -4,6 +4,9 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use std::net::SocketAddr;
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand, ValueEnum};
 
 /// The backend to use for BuffDB.
@@ -32,47 +35,58 @@ impl Default for Backend {
     }
 }
 
-/// Command-line arguments for BuffDB.
-#[derive(Debug, Parser)]
-pub(crate) struct Args {
-    /// The backend to use for BuffDB.
-    #[arg(value_enum, short, long, default_value_t = Backend::default())]
-    pub(crate) backend: Backend,
-    /// The operation to perform.
-    #[command(subcommand)]
-    pub(crate) command: Command,
-}
+impl Args {
+    /// Load and merge configuration from config file and CLI arguments.
+    /// CLI arguments have higher precedence than config file.
+    pub fn load_config(&self) -> Result<buffdb::config::Config, Box<dyn std::error::Error>> {
+        // Try to load config from various sources
+        let mut config = if let Some(ref config_path) = self.config {
+            // Explicit config file provided
+            buffdb::config::Config::from_file(config_path)?
+        } else {
+            // Try default locations
+            let current_dir_config = PathBuf::from("buffdb.toml");
+            let home_dir_config = home::home_dir()
+                .map(|h| h.join(".config/buffdb/buffdb.toml"))
+                .filter(|p| p.exists());
 
-/// What operation to perform.
-#[derive(Debug, Subcommand)]
-#[command(version, propagate_version = true)]
-pub(crate) enum Command {
-    /// Run BuffDB as a server.
-    ///
-    /// This will start a gRPC server that can be used to interact with BuffDB. The server will
-    /// listen on the given address until it is stopped.
-    #[clap(alias = "serve")]
-    Run(RunArgs),
-    /// Perform operations on the key-value store.
-    #[clap(aliases = ["key-value", "k-v"])]
-    Kv(KvArgs),
-    /// Perform operations on the BLOB store.
-    Blob(BlobArgs),
-}
+            if let Some(home_config) = home_dir_config {
+                buffdb::config::Config::from_file(home_config)?
+            } else if current_dir_config.exists() {
+                buffdb::config::Config::from_file(current_dir_config)?
+            } else {
+                buffdb::config::Config::default()
+            }
+        };
 
-/// Run BuffDB as a server
-#[derive(Debug, Parser)]
-#[command(propagate_version = true)]
-pub(crate) struct RunArgs {
-    /// The location of the key-value store.
-    #[clap(long, default_value = "kv_store.db")]
-    pub(crate) kv_store: PathBuf,
-    /// The location of the BLOB store.
-    #[clap(long, default_value = "blob_store.db")]
-    pub(crate) blob_store: PathBuf,
-    /// The address to listen on.
-    #[clap(default_value = "[::1]:9313")]
-    pub(crate) addr: SocketAddr,
+        // Apply CLI overrides for run command
+        if let Command::Run(ref run_args) = self.command {
+            let config_backend = match self.backend {
+                Backend::Sqlite => buffdb::config::ConfigBackend::Sqlite,
+                #[cfg(feature = "duckdb")]
+                Backend::DuckDb => buffdb::config::ConfigBackend::DuckDb,
+            };
+            config.apply_cli_overrides(
+                Some(config_backend),
+                Some(run_args.kv_store.clone()),
+                Some(run_args.blob_store.clone()),
+                Some(run_args.addr),
+            );
+        } else {
+            // Apply backend override for other commands
+            let config_backend = match self.backend {
+                Backend::Sqlite => buffdb::config::ConfigBackend::Sqlite,
+                #[cfg(feature = "duckdb")]
+                Backend::DuckDb => buffdb::config::ConfigBackend::DuckDb,
+            };
+            config.apply_cli_overrides(Some(config_backend), None, None, None);
+        }
+
+        // Validate final configuration
+        config.validate()?;
+
+        Ok(config)
+    }
 }
 
 /// Arguments for performing operations on the key-value store.
