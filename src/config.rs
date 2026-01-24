@@ -20,9 +20,9 @@ pub enum ConfigBackend {
 impl std::fmt::Display for ConfigBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigBackend::Sqlite => write!(f, "sqlite"),
+            Self::Sqlite => write!(f, "sqlite"),
             #[cfg(feature = "duckdb")]
-            ConfigBackend::DuckDb => write!(f, "duckdb"),
+            Self::DuckDb => write!(f, "duckdb"),
         }
     }
 }
@@ -94,7 +94,7 @@ impl Default for LoggingConfig {
 }
 
 /// Performance configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct PerformanceConfig {
     /// Maximum number of concurrent connections.
     pub max_connections: Option<usize>,
@@ -104,18 +104,8 @@ pub struct PerformanceConfig {
     pub keep_alive: Option<u64>,
 }
 
-impl Default for PerformanceConfig {
-    fn default() -> Self {
-        Self {
-            max_connections: None,
-            request_timeout: None,
-            keep_alive: None,
-        }
-    }
-}
-
 /// Main BuffDB configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     /// Server configuration.
     pub server: ServerConfig,
@@ -127,17 +117,6 @@ pub struct Config {
     pub performance: PerformanceConfig,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            database: DatabaseConfig::default(),
-            logging: LoggingConfig::default(),
-            performance: PerformanceConfig::default(),
-        }
-    }
-}
-
 impl Config {
     /// Create a new configuration with default values.
     pub fn new() -> Self {
@@ -147,7 +126,7 @@ impl Config {
     /// Load configuration from a TOML file.
     pub fn from_file<P: AsRef<std::path::Path>>(path: P) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&content)?;
+        let config: Self = toml::from_str(&content)?;
         Ok(config)
     }
 
@@ -179,10 +158,10 @@ impl Config {
     /// Validate the configuration.
     pub fn validate(&self) -> Result<(), ConfigError> {
         // Validate server address
-        self.server_address()?;
+        _ = self.server_address()?;
 
         // Validate backend
-        self.backend()?;
+        _ = self.backend()?;
 
         // Validate that kv_store and blob_store are different
         if self.database.kv_store == self.database.blob_store {
@@ -253,7 +232,6 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -283,6 +261,8 @@ blob_store = "custom_blob.db"
 
 [logging]
 level = "debug"
+
+[performance]
 "#
         )?;
 
@@ -316,7 +296,7 @@ level = "debug"
         let mut config = Config::default();
 
         config.apply_cli_overrides(
-            Some(Backend::Sqlite),
+            Some(ConfigBackend::Sqlite),
             Some(PathBuf::from("cli_kv.db")),
             Some(PathBuf::from("cli_blob.db")),
             Some("127.0.0.1:9000".parse().unwrap()),
