@@ -37,7 +37,7 @@ impl Default for Backend {
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
     #[arg(short, long)]
-    pub(crate) config: Option<Config>,
+    pub(crate) config: Option<PathBuf>,
     /// The backend to use for BuffDB.
     #[arg(value_enum, short, long, default_value_t = Backend::default())]
     pub(crate) backend: Backend,
@@ -47,7 +47,7 @@ pub(crate) struct Args {
 }
 
 impl Args {
-    pub fn load_config(&self) -> Result<Config, Box<dyn std::error::Error>> {
+    pub(crate) fn load_config(&self) -> Result<Config, Box<dyn std::error::Error>> {
         let mut config = if let Some(ref config_path) = self.config {
             Config::from_file(config_path)?
         } else {
@@ -59,7 +59,7 @@ impl Args {
             if let Some(home_config) = home_dir_config {
                 Config::from_file(home_config)?
             } else if current_dir_config.exists() {
-                Config::from(current_dir_config)?
+                Config::from_file(current_dir_config)?
             } else {
                 Config::default()
             }
