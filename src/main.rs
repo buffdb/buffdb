@@ -1,7 +1,6 @@
 //! A command-line interface for interacting with a stores provided by the BuffDB library.
 //!
 //! For usage, run `cargo run -- --help`.
-
 #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
 compile_error!("at least one backend must be enabled (options are `duckdb` and `sqlite`)");
 
@@ -119,8 +118,7 @@ where
     Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let store = config.database.kv_store.clone();
-    let mut client: buffdb::client::kv::KvClient<tonic::transport::Channel> =
-        transitive::kv_client::<_, Backend>(store).await?;
+    let mut client = transitive::kv_client::<_, Backend>(store).await?;
     match kv_args.command {
         cli::KvCommand::Get { keys } => {
             let mut values: tonic::Streaming<kv::GetResponse> = client
@@ -212,8 +210,7 @@ where
     Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
     let store = config.database.blob_store.clone();
-    let mut client: buffdb::client::blob::BlobClient<tonic::transport::Channel> =
-        transitive::blob_client::<_, Backend>(store.clone()).await?;
+    let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
     match blob_args.command {
         cli::BlobCommand::Get { id, mode } => {
             let blob: Vec<Result<blob::GetResponse, tonic::Status>> = client
