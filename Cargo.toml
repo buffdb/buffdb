@@ -72,6 +72,9 @@ thiserror = "1.0"
 ordered-float = "4.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.141"
+toml = "0.8"
+home = "0.5"
+tempfile = "3.8"
 chrono = { version = "0.4", features = ["serde"] }
 
 [build-dependencies]

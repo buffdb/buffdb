@@ -1,7 +1,6 @@
 //! A command-line interface for interacting with a stores provided by the BuffDB library.
 //!
 //! For usage, run `cargo run -- --help`.
-
 #[cfg(not(any(feature = "duckdb", feature = "sqlite")))]
 compile_error!("at least one backend must be enabled (options are `duckdb` and `sqlite`)");
 
@@ -42,25 +41,28 @@ impl std::fmt::Display for ErrStr {
 }
 
 fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
+    let args = Args::parse();
+
+    // Load configuration
+    let config = args.load_config()?;
+    tracing_shim::trace!(?config, "Loaded configuration");
+
     #[cfg(feature = "tracing")]
     tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::default())?;
 
-    let Args { backend, command } = Args::parse();
-    tracing_shim::trace!(?backend, ?command);
-
     let future = async {
-        match backend {
+        match args.backend {
             #[cfg(feature = "duckdb")]
-            Backend::DuckDb => match command {
-                Command::Run(args) => run::<DuckDb>(args).await,
-                Command::Kv(args) => kv::<DuckDb>(args).await,
-                Command::Blob(args) => blob::<DuckDb>(args).await,
+            Backend::DuckDb => match args.command {
+                Command::Run(run_args) => run_with_config::<DuckDb>(config, run_args).await,
+                Command::Kv(kv_args) => kv_with_config::<DuckDb>(config, kv_args).await,
+                Command::Blob(blob_args) => blob_with_config::<DuckDb>(config, blob_args).await,
             },
             #[cfg(feature = "sqlite")]
-            Backend::Sqlite => match command {
-                Command::Run(args) => run::<Sqlite>(args).await,
-                Command::Kv(args) => kv::<Sqlite>(args).await,
-                Command::Blob(args) => blob::<Sqlite>(args).await,
+            Backend::Sqlite => match args.command {
+                Command::Run(run_args) => run_with_config::<Sqlite>(config, run_args).await,
+                Command::Kv(kv_args) => kv_with_config::<Sqlite>(config, kv_args).await,
+                Command::Blob(blob_args) => blob_with_config::<Sqlite>(config, blob_args).await,
             },
         }
     };
@@ -72,22 +74,10 @@ fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
 }
 
 /// Run BuffDB as a server. This function will block until the server is shut down.
-///
-/// # Parameters
-///
-/// - `kv_store`: The location to store key-value pairs.
-/// - `blob_store`: The location to store BLOBs.
-/// - `addr`: The address to bind the server to.
-///
-/// `kv_store` and `blob_store` cannot be the same location. This is enforced at runtime to a
-/// reasonable extent.
 #[cfg_attr(feature = "tracing", tracing::instrument)]
-async fn run<Backend>(
-    RunArgs {
-        kv_store,
-        blob_store,
-        addr,
-    }: RunArgs,
+async fn run_with_config<Backend>(
+    config: buffdb::config::Config,
+    _run_args: RunArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
     Backend: DatabaseBackend<Error: IntoTonicStatus + std::error::Error>
@@ -97,34 +87,13 @@ where
         + 'static,
     Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
-    if kv_store == blob_store {
-        return Err(Box::new(ErrStr(
-            "kv_store and blob_store cannot be at the same location",
-        )));
-    } else {
-        // Rust's standard library has extension traits for Unix and Windows. Windows doesn't have
-        // the concept of hard links, so there's no need to check an equivalent of inodes.
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let kv_store_metadata = std::fs::metadata(&kv_store);
-            let blob_store_metadata = std::fs::metadata(&blob_store);
+    let kv_store_path = config.database.kv_store.clone();
+    let blob_store_path = config.database.blob_store.clone();
+    let addr = config.server_address()?;
 
-            if let Some((kv_store_metadata, blob_store_metadata)) =
-                kv_store_metadata.ok().zip(blob_store_metadata.ok())
-            {
-                if kv_store_metadata.ino() == blob_store_metadata.ino() {
-                    return Err(Box::new(ErrStr(
-                        "kv_store and blob_store cannot be at the same location",
-                    )));
-                }
-            }
-        }
-    }
-
-    debug!(?kv_store, ?blob_store, "creating stores");
-    let kv_store = KvStore::<Backend>::at_path(kv_store)?;
-    let blob_store = BlobStore::<Backend>::at_path(blob_store)?;
+    debug!(?kv_store_path, ?blob_store_path, "creating stores");
+    let kv_store = KvStore::<Backend>::at_path(kv_store_path)?;
+    let blob_store = BlobStore::<Backend>::at_path(blob_store_path)?;
 
     debug!("starting server");
     Server::builder()
@@ -137,19 +106,10 @@ where
 }
 
 /// Perform operations on the key-value store.
-///
-/// # Parameters
-///
-/// - `store`: The location of the key-value store.
-/// - `command`: The command to execute.
-///
-/// # stdout
-///
-/// When obtaining a value for a key, the value is written to stdout. Multiple values are separated
-/// by a null byte (`\0`).
 #[cfg_attr(feature = "tracing", tracing::instrument)]
-async fn kv<Backend>(
-    KvArgs { store, command }: KvArgs,
+async fn kv_with_config<Backend>(
+    config: buffdb::config::Config,
+    kv_args: KvArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
     Backend: KvBackend<GetStream: Send, SetStream: Send, DeleteStream: Send, Error: IntoTonicStatus>
@@ -157,10 +117,11 @@ where
         + 'static,
     Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
+    let store = config.database.kv_store.clone();
     let mut client = transitive::kv_client::<_, Backend>(store).await?;
-    match command {
+    match kv_args.command {
         cli::KvCommand::Get { keys } => {
-            let mut values = client
+            let mut values: tonic::Streaming<kv::GetResponse> = client
                 .get(stream::iter(keys.into_iter().map(|key| kv::GetRequest {
                     key,
                     transaction_id: None,
@@ -197,7 +158,7 @@ where
         }
         cli::KvCommand::Eq { keys } => {
             let keys = keys.into_iter().map(|key| kv::EqRequest { key });
-            let all_eq = client.eq(stream::iter(keys)).await?.into_inner();
+            let all_eq: bool = client.eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_eq {
                 return Ok(ExitCode::FAILURE);
@@ -205,7 +166,7 @@ where
         }
         cli::KvCommand::NotEq { keys } => {
             let keys = keys.into_iter().map(|key| kv::NotEqRequest { key });
-            let all_neq = client.not_eq(stream::iter(keys)).await?.into_inner();
+            let all_neq: bool = client.not_eq(stream::iter(keys)).await?.into_inner();
             drop(client);
             if !all_neq {
                 return Ok(ExitCode::FAILURE);
@@ -233,8 +194,9 @@ where
 ///
 /// Nothing is written to stdout for other operations.
 #[cfg_attr(feature = "tracing", tracing::instrument)]
-async fn blob<Backend>(
-    BlobArgs { store, command }: BlobArgs,
+async fn blob_with_config<Backend>(
+    config: buffdb::config::Config,
+    blob_args: BlobArgs,
 ) -> Result<ExitCode, Box<dyn std::error::Error>>
 where
     Backend: BlobBackend<
@@ -247,10 +209,11 @@ where
         + 'static,
     Backend::Error: std::fmt::Display + std::fmt::Debug,
 {
+    let store = config.database.blob_store.clone();
     let mut client = transitive::blob_client::<_, Backend>(store.clone()).await?;
-    match command {
+    match blob_args.command {
         cli::BlobCommand::Get { id, mode } => {
-            let blob: Vec<_> = client
+            let blob: Vec<Result<blob::GetResponse, tonic::Status>> = client
                 .get(stream::iter([blob::GetRequest {
                     id,
                     transaction_id: None,
@@ -288,7 +251,7 @@ where
             file_path,
             metadata,
         } => {
-            let id: Vec<_> = client
+            let id: Vec<Result<blob::StoreResponse, tonic::Status>> = client
                 .store(stream::iter([blob::StoreRequest {
                     bytes: read_file_or_stdin(file_path).await?,
                     metadata,
@@ -361,7 +324,7 @@ where
                 .await?;
         }
         cli::BlobCommand::EqData { ids } => {
-            let all_eq = client
+            let all_eq: bool = client
                 .eq_data(stream::iter(
                     ids.into_iter().map(|id| blob::EqDataRequest { id }),
                 ))
@@ -373,7 +336,7 @@ where
             }
         }
         cli::BlobCommand::NotEqData { ids } => {
-            let all_neq = client
+            let all_neq: bool = client
                 .not_eq_data(stream::iter(
                     ids.into_iter().map(|id| blob::NotEqDataRequest { id }),
                 ))

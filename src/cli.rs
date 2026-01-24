@@ -4,6 +4,7 @@ use std::fmt;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
+use buffdb::config::Config;
 use clap::{Parser, Subcommand, ValueEnum};
 
 /// The backend to use for BuffDB.
@@ -35,6 +36,8 @@ impl Default for Backend {
 /// Command-line arguments for BuffDB.
 #[derive(Debug, Parser)]
 pub(crate) struct Args {
+    #[arg(short, long)]
+    pub(crate) config: Option<PathBuf>,
     /// The backend to use for BuffDB.
     #[arg(value_enum, short, long, default_value_t = Backend::default())]
     pub(crate) backend: Backend,
@@ -43,6 +46,52 @@ pub(crate) struct Args {
     pub(crate) command: Command,
 }
 
+impl Args {
+    pub(crate) fn load_config(&self) -> Result<Config, Box<dyn std::error::Error>> {
+        let mut config = if let Some(ref config_path) = self.config {
+            Config::from_file(config_path)?
+        } else {
+            let current_dir_config = PathBuf::from("buffdb.toml");
+            let home_dir_config = home::home_dir()
+                .map(|h| h.join(".config/buffdb/buffdb.toml"))
+                .filter(|p| p.exists());
+
+            if let Some(home_config) = home_dir_config {
+                Config::from_file(home_config)?
+            } else if current_dir_config.exists() {
+                Config::from_file(current_dir_config)?
+            } else {
+                Config::default()
+            }
+        };
+        if let Command::Run(ref run_args) = self.command {
+            let config_backend = match self.backend {
+                Backend::Sqlite => buffdb::config::ConfigBackend::Sqlite,
+                #[cfg(feature = "duckdb")]
+                Backend::DuckDb => buffdb::config::ConfigBackend::DuckDb,
+            };
+            config.apply_cli_overrides(
+                Some(config_backend),
+                Some(run_args.kv_store.clone()),
+                Some(run_args.blob_store.clone()),
+                Some(run_args.addr),
+            );
+        } else {
+            // Apply backend override for other commands
+            let config_backend = match self.backend {
+                Backend::Sqlite => buffdb::config::ConfigBackend::Sqlite,
+                #[cfg(feature = "duckdb")]
+                Backend::DuckDb => buffdb::config::ConfigBackend::DuckDb,
+            };
+            config.apply_cli_overrides(Some(config_backend), None, None, None);
+        }
+
+        // Validate final configuration
+        config.validate()?;
+
+        Ok(config)
+    }
+}
 /// What operation to perform.
 #[derive(Debug, Subcommand)]
 #[command(version, propagate_version = true)]

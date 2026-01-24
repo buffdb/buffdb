@@ -33,6 +33,8 @@ mod blob;
 mod conv;
 // #[cfg(feature = "duckdb")]
 // mod duckdb_helper;
+/// Configuration management for BuffDB
+pub mod config;
 pub mod index;
 /// Inference service for ML model serving
 pub mod inference;
